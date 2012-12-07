@@ -24,14 +24,14 @@
 
 #define COLOR(r,g,b) 		((r & 0xFF)+((g & 0xFF)<<GREEN_SHIFT))
 
-#define LATCH_PORT		GPIO_PORTB_BASE
-#define LATCH_PIN		GPIO_PIN_4
+#define LATCH_PORT		GPIO_PORTA_BASE
+#define LATCH_PIN		GPIO_PIN_3
 
-#define SER_OUT_PORT		GPIO_PORTB_BASE
-#define SER_OUT_PIN		GPIO_PIN_7
+#define SER_OUT_PORT		GPIO_PORTA_BASE
+#define SER_OUT_PIN		GPIO_PIN_2
 
-#define CLK_OUT_PORT		GPIO_PORTE_BASE
-#define CLK_OUT_PIN		GPIO_PIN_5
+#define CLK_OUT_PORT		GPIO_PORTA_BASE
+#define CLK_OUT_PIN		GPIO_PIN_4
 
 #define FAST_GPIOPinWrite(ulPort, ucPins, ucVal) HWREG(ulPort + (GPIO_O_DATA + (ucPins << 2))) = ucVal
 
@@ -68,6 +68,7 @@ main(void) {
 
 	cpu_init();
 
+	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
@@ -294,8 +295,6 @@ void timer0b_int_handler(void) {
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMB_TIMEOUT);
 
 	counter++;
-//	if( counter == 0) {
-	v = MAP_GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_3);
-	FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, v ^ GPIO_PIN_3);
-	//}
+/*	v = MAP_GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_3);
+	FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, v ^ GPIO_PIN_3);*/
 }
