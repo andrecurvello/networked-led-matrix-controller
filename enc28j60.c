@@ -12,6 +12,8 @@
 
 #define printf          UARTprintf
 
+#define delayMs(ms) (SysCtlDelay(((SysCtlClockGet() / 3) / 1000)*ms))
+
 extern uint8_t spi_send(uint8_t c);
 
 static uint8_t enc_current_bank;

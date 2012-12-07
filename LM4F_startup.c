@@ -48,6 +48,8 @@ void hardfault_handler(void);
 extern void timer0_int_handler(void);
 extern void timer0b_int_handler(void);
 extern void UARTStdioIntHandler(void);
+extern void SysTickIntHandler(void);
+extern void GPIOPortEIntHandler(void);
 
 //-----------------------------------------------------------------------------
 // 						     Variables declarations
@@ -91,13 +93,13 @@ void(* myvectors[])(void) = {
     empty_def_handler,		// Debug monitor					12
     0,						// Reserved							13
     empty_def_handler,		// PendSV							14
-    empty_def_handler,		// SysTick							15
+    SysTickIntHandler,		// SysTick							15
     // Peripherial interrupts start here.
 	empty_def_handler,		// GPIO Port A						16
 	empty_def_handler,		// GPIO Port B						17
 	empty_def_handler,		// GPIO Port C						18
 	empty_def_handler,		// GPIO Port D						19
-	empty_def_handler,		// GPIO Port E						20
+	GPIOPortEIntHandler,		// GPIO Port E						20
 	UARTStdioIntHandler,		// UART 0							21
 	empty_def_handler,		// UART 1							22
 	empty_def_handler,		// SSI 0							23

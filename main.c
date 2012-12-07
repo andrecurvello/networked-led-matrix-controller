@@ -11,6 +11,13 @@
 #include <driverlib/interrupt.h>
 #include <driverlib/uart.h>
 #include <driverlib/ssi.h>
+#include <driverlib/systick.h>
+
+#include <lwip/init.h>
+#include <lwip/netif.h>
+#include <lwip/dhcp.h>
+#include <lwip/tcp_impl.h>
+#include <netif/etharp.h>
 
 #include <utils/uartstdio.h>
 
@@ -18,6 +25,7 @@
 #include <stdint.h>
 
 #include "font.h"
+#include "enc28j60.h"
 
 #define delayMs(ms) (SysCtlDelay(((SysCtlClockGet() / 3) / 1000)*ms))
 
@@ -48,6 +56,8 @@ static void shift_out(uint8_t b);
 static void shift_out_data(const uint16_t b[8], uint8_t shift, uint8_t threshold);
 static void shift_out_row(uint8_t row, const uint16_t data[8], uint8_t threshold);
 void timer0_int_handler(void);
+void SysTickIntHandler(void);
+static void enc28j60_comm_init(void);
 
 static int current_intensity = 0;
 static int current_row = 0;
@@ -64,19 +74,31 @@ const uint16_t static_data[8][8] = {
 };
 volatile uint16_t fb[8][8];
 static volatile int counter = 0;
-uint8_t msg[] = "0123456789";
+const uint8_t msg[] = "!HELLO WORLD!  ";
 const uint8_t msg_len = sizeof(msg)-1;
 uint8_t msg_color[4] = {COLOR(15,0,0), COLOR(0,15,0), COLOR(15,10,0), COLOR(5,15,0)};
 uint8_t next_char = 0;
 uint8_t off = 0;
+volatile static unsigned long events;
+volatile static unsigned long tickCounter;
+
+#define FLAG_SYSTICK	0
+#define FLAG_UPDATE	1
+#define FLAG_ENC_INT	2
+
+#define TICK_MS                 250
+#define SYSTICKHZ               (1000/TICK_MS)
+
+const uint8_t mac_addr[] = { 0x00, 0xC0, 0x033, 0x50, 0x48, 0x12 };
 
 int
 main(void) {
+	struct netif netif;
+
 	cpu_init();
         uart_init();
         spi_init();
 
-        UARTprintf("Welcome\n");
 
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
@@ -84,7 +106,6 @@ main(void) {
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
 
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-	MAP_IntMasterEnable();
 
 	// Setup LEDs
 	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1);
@@ -96,18 +117,28 @@ main(void) {
 	MAP_GPIOPinTypeGPIOOutput(SER_OUT_PORT, SER_OUT_PIN);
 	MAP_GPIOPinTypeGPIOOutput(CLK_OUT_PORT, CLK_OUT_PIN);
 
+	// Setup SysTick timer
+	MAP_SysTickPeriodSet(MAP_SysCtlClockGet() / SYSTICKHZ);
+	MAP_SysTickEnable();
+	MAP_SysTickIntEnable();
+
 	// Configure timer 
 	MAP_TimerConfigure(TIMER0_BASE, TIMER_CFG_A_PERIODIC | TIMER_CFG_B_PERIODIC | TIMER_CFG_SPLIT_PAIR);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, ROM_SysCtlClockGet()/20000);
-	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 20000);//ROM_SysCtlClockGet());
+	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 11000);//ROM_SysCtlClockGet());
 	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 255);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);
 
 	MAP_TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT | TIMER_TIMB_TIMEOUT);
-
 	MAP_TimerEnable(TIMER0_BASE, TIMER_BOTH);
+
+	MAP_GPIOIntTypeSet(GPIO_PORTE_BASE, ENC_INT, GPIO_FALLING_EDGE);
+	MAP_GPIOPinIntClear(GPIO_PORTE_BASE, ENC_INT);
+	MAP_GPIOPinIntEnable(GPIO_PORTE_BASE, ENC_INT);
+
+	MAP_IntMasterEnable();
 
 	FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0);
 
@@ -119,40 +150,52 @@ main(void) {
 	shift_out(0x00);
 	shift_latch();
 
+	enc28j60_comm_init();
+	enc_init(mac_addr);
+
+	lwip_init();
+
+	ip_addr_t ipaddr, netmask, gw;
+
+	IP4_ADDR(&gw, 0,0,0,0);
+	IP4_ADDR(&ipaddr, 0,0,0,0);
+	IP4_ADDR(&netmask, 0, 0, 0, 0);
+
+
+	netif_add(&netif, &ipaddr, &netmask, &gw, NULL, enc28j60_init, ethernet_input);
+	netif_set_default(&netif);
+	dhcp_start(&netif);
 
 	for(int i=0; i<8; i++) {
 		for(int l=0; l<8; l++) {
-			//fb[i][l] = ((font[msg[next_char]-48][i] >> (7-l)) & 0x1) * COLOR(15,15,0); //msg_color[next_char];
-			fb[i][l] = static_data[i][l];
+			//fb[i][l] = ((font[msg[next_char]-32][i] >> (7-l)) & 0x1) * COLOR(15,15,0); //msg_color[next_char];
+			//fb[i][l] = static_data[i][l];
+			fb[i][l] = 0;
 		}
 	}
 
+        UARTprintf("Welcome\n");
+
 	//memcpy(fb, static_data, 128);
+
+	unsigned long last_arp_time, last_tcp_time, last_dhcp_coarse_time,
+		      last_dhcp_fine_time;
+
+	last_arp_time = last_tcp_time = last_dhcp_coarse_time = last_dhcp_fine_time = 0;
 
 	// Do nothing :-)
 	while(true) {
-#if 0
-		//for(int l=0; l<15; l+=1) {
-			for(int i=0; i<8; i++) {
-				shift_out_row(ROW(i), fb[i], 14);
-			}
-		//}
-#endif
-		//delayMs(100);
-		/*v = MAP_GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_1);
-		FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, v ^ GPIO_PIN_1);*/
-		//counter++;
+		MAP_SysCtlSleep();
 #if 1
-		if( counter > 10) {
-			MAP_IntMasterDisable();
+		if(HWREGBITW(&events, FLAG_UPDATE) == 1) {
+			HWREGBITW(&events, FLAG_UPDATE) = 0;
 			counter = 0;
 			for(int i=0; i<8; i++) {
 				for(int l=0; l<7; l++) {
 					fb[i][l] = fb[i][l+1];
 				}
-				fb[i][7] = ((font[msg[next_char]-48][i] >> (8-off)) & 0x1) * COLOR(5, 5, 0); //msg_color[next_char];
+				fb[i][7] = ((font[msg[next_char]-32][i] >> (7-off)) & 0x1) * COLOR(0, 15, 0); //msg_color[next_char];
 			}
-			MAP_IntMasterEnable();
 			off++;
 			if( off >= 8) {
 				off = 0;
@@ -163,7 +206,33 @@ main(void) {
 			}
 		}
 #endif
+		if(HWREGBITW(&events, FLAG_SYSTICK) == 1) {
+			HWREGBITW(&events, FLAG_SYSTICK) = 0;
 
+			if( (tickCounter - last_arp_time) * TICK_MS >= ARP_TMR_INTERVAL) {
+				etharp_tmr();
+				last_arp_time = tickCounter;
+			}
+
+			if( (tickCounter - last_tcp_time) * TICK_MS >= TCP_TMR_INTERVAL) {
+				tcp_tmr();
+				last_tcp_time = tickCounter;
+			}
+			if( (tickCounter - last_dhcp_coarse_time) * TICK_MS >= DHCP_COARSE_TIMER_MSECS) {
+				dhcp_coarse_tmr();
+				last_dhcp_coarse_time = tickCounter;
+			}
+
+			if( (tickCounter - last_dhcp_fine_time) * TICK_MS >= DHCP_FINE_TIMER_MSECS) {
+				dhcp_fine_tmr();
+				last_dhcp_fine_time = tickCounter;
+			}
+		}
+		
+		if( HWREGBITW(&events, FLAG_ENC_INT) == 1 ) {
+			HWREGBITW(&events, FLAG_ENC_INT) = 0;
+			enc_action(&netif);
+		}
 	}
 }
 
@@ -336,6 +405,51 @@ void timer0b_int_handler(void) {
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMB_TIMEOUT);
 
 	counter++;
+	//if( counter > 2) {
+		counter = 0;
+		HWREGBITW(&events, FLAG_UPDATE) = 1;
+	//}
 /*	v = MAP_GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_3);
 	FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, v ^ GPIO_PIN_3);*/
 }
+
+void SysTickIntHandler(void) {
+	tickCounter++;
+	HWREGBITW(&events, FLAG_SYSTICK) = 1;
+}
+
+static void
+enc28j60_comm_init(void) {
+	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
+	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, ENC_CS);
+	//MAP_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, SRAM_CS);
+	//  MAP_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, ENC_CS | ENC_RESET | SRAM_CS);
+	MAP_GPIOPinTypeGPIOInput(GPIO_PORTE_BASE, ENC_INT);
+
+	//  MAP_GPIOPinWrite(GPIO_PORTA_BASE, ENC_RESET, 0);
+	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
+	//MAP_GPIOPinWrite(GPIO_PORTA_BASE, SRAM_CS, SRAM_CS);
+}
+
+void GPIOPortEIntHandler(void) {
+	uint8_t p = MAP_GPIOPinIntStatus(GPIO_PORTE_BASE, true) & 0xFF;
+
+	MAP_GPIOPinIntClear(GPIO_PORTE_BASE, p);
+
+	HWREGBITW(&events, FLAG_ENC_INT) = 1;
+}
+
+uint8_t spi_send(uint8_t c) {
+	unsigned long val;
+	MAP_SSIDataPut(SSI2_BASE, c);
+	MAP_SSIDataGet(SSI2_BASE, &val);
+	return (uint8_t)val;
+}
+
+uint32_t
+sys_now(void) {
+	return tickCounter;
+}
+
