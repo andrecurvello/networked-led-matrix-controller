@@ -44,6 +44,7 @@ FPU=-mfpu=fpv4-sp-d16 -mfloat-abi=softfp
 
 # Stellarisware path
 STELLARISWARE_PATH=~/opt/stellaris-launchpad/
+DIR_LWIP=$(PWD)/lwip/src
 
 # Program name definition for ARM GNU C compiler.
 CC      = ${PREFIX_ARM}-gcc
@@ -55,9 +56,10 @@ CP      = ${PREFIX_ARM}-objcopy
 OD      = ${PREFIX_ARM}-objdump
 
 # Option arguments for C compiler.
-CFLAGS=-mthumb ${CPU} ${FPU} -O0 -ffunction-sections -fdata-sections -MD -std=gnu99 -Wall  -c -g
+CFLAGS=-mthumb ${CPU} ${FPU} -O0 -ffunction-sections -fdata-sections -MD -std=gnu99 -Wall  -c -g -DUART_BUFFERED
 # Library stuff passed as flags!
 CFLAGS+= -I ${STELLARISWARE_PATH} -DPART_$(PART) -c -DTARGET_IS_BLIZZARD_RA1
+CFLAGS+= -I$(DIR_LWIP)/include -I$(DIR_LWIP)/include/ipv4 -I$(DIR_LWIP)/include/ipv6 -I.
 
 # Flags for LD
 LFLAGS  = --gc-sections
@@ -93,7 +95,35 @@ STARTUP_FILE = LM4F_startup
 # Linker file name
 LINKER_FILE = LM4F.ld
 
-SRC = $(wildcard *.c)
+
+SRC_LWIP=$(DIR_LWIP)/core/raw.c \
+        $(DIR_LWIP)/core/init.c \
+        $(DIR_LWIP)/core/tcp.c \
+        $(DIR_LWIP)/core/udp.c \
+        $(DIR_LWIP)/core/tcp_in.c \
+        $(DIR_LWIP)/core/tcp_out.c \
+        $(DIR_LWIP)/core/pbuf.c \
+        $(DIR_LWIP)/core/sys.c \
+        $(DIR_LWIP)/core/def.c \
+        $(DIR_LWIP)/core/mem.c \
+        $(DIR_LWIP)/core/memp.c \
+        $(DIR_LWIP)/core/ipv4/ip4.c \
+        $(DIR_LWIP)/core/ipv4/ip4_addr.c \
+        $(DIR_LWIP)/core/ipv4/icmp.c \
+        $(DIR_LWIP)/core/ipv4/ip_frag.c \
+        $(DIR_LWIP)/core/ipv4/igmp.c \
+        $(DIR_LWIP)/core/stats.c \
+        $(DIR_LWIP)/core/inet_chksum.c \
+        $(DIR_LWIP)/core/netif.c \
+        $(DIR_LWIP)/core/timers.c \
+        $(DIR_LWIP)/core/dhcp.c \
+        $(DIR_LWIP)/netif/etharp.c 
+
+SRC = LM4F_startup.c \
+      main.c \
+      enc28j60.c \
+      ${STELLARISWARE_PATH}/utils/uartstdio.c
+
 OBJS = $(SRC:.c=.o)
 
 #==============================================================================

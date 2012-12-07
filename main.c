@@ -9,6 +9,10 @@
 #include <driverlib/gpio.h>
 #include <driverlib/timer.h>
 #include <driverlib/interrupt.h>
+#include <driverlib/uart.h>
+#include <driverlib/ssi.h>
+
+#include <utils/uartstdio.h>
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -24,18 +28,21 @@
 
 #define COLOR(r,g,b) 		((r & 0xFF)+((g & 0xFF)<<GREEN_SHIFT))
 
+#define CLK_OUT_PORT		GPIO_PORTA_BASE
+#define CLK_OUT_PIN		GPIO_PIN_4
+
 #define LATCH_PORT		GPIO_PORTA_BASE
 #define LATCH_PIN		GPIO_PIN_3
 
 #define SER_OUT_PORT		GPIO_PORTA_BASE
 #define SER_OUT_PIN		GPIO_PIN_2
 
-#define CLK_OUT_PORT		GPIO_PORTA_BASE
-#define CLK_OUT_PIN		GPIO_PIN_4
 
 #define FAST_GPIOPinWrite(ulPort, ucPins, ucVal) HWREG(ulPort + (GPIO_O_DATA + (ucPins << 2))) = ucVal
 
 static inline void cpu_init(void);
+static inline void uart_init(void);
+static inline void spi_init(void);
 static void shift_latch(void);
 static void shift_out(uint8_t b);
 static void shift_out_data(const uint16_t b[8], uint8_t shift, uint8_t threshold);
@@ -57,16 +64,19 @@ const uint16_t static_data[8][8] = {
 };
 volatile uint16_t fb[8][8];
 static volatile int counter = 0;
-	uint8_t msg[] = "0123456789";
-	const uint8_t msg_len = sizeof(msg)-1;
-	uint8_t msg_color[4] = {COLOR(15,0,0), COLOR(0,15,0), COLOR(15,10,0), COLOR(5,15,0)};
-	uint8_t next_char = 0;
-	uint8_t off = 0;
+uint8_t msg[] = "0123456789";
+const uint8_t msg_len = sizeof(msg)-1;
+uint8_t msg_color[4] = {COLOR(15,0,0), COLOR(0,15,0), COLOR(15,10,0), COLOR(5,15,0)};
+uint8_t next_char = 0;
+uint8_t off = 0;
 
 int
 main(void) {
-
 	cpu_init();
+        uart_init();
+        spi_init();
+
+        UARTprintf("Welcome\n");
 
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
@@ -81,6 +91,7 @@ main(void) {
 	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_2);
 	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_3);
 
+        // Setup Display pins
 	MAP_GPIOPinTypeGPIOOutput(LATCH_PORT, LATCH_PIN);
 	MAP_GPIOPinTypeGPIOOutput(SER_OUT_PORT, SER_OUT_PIN);
 	MAP_GPIOPinTypeGPIOOutput(CLK_OUT_PORT, CLK_OUT_PIN);
@@ -132,8 +143,8 @@ main(void) {
 		FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, v ^ GPIO_PIN_1);*/
 		//counter++;
 #if 1
-		if( counter > 2) {
-			//MAP_IntMasterDisable();
+		if( counter > 10) {
+			MAP_IntMasterDisable();
 			counter = 0;
 			for(int i=0; i<8; i++) {
 				for(int l=0; l<7; l++) {
@@ -141,7 +152,7 @@ main(void) {
 				}
 				fb[i][7] = ((font[msg[next_char]-48][i] >> (8-off)) & 0x1) * COLOR(5, 5, 0); //msg_color[next_char];
 			}
-			//MAP_IntMasterEnable();
+			MAP_IntMasterEnable();
 			off++;
 			if( off >= 8) {
 				off = 0;
@@ -163,6 +174,35 @@ static inline void cpu_init(void) {
 	// Setup for 16MHZ external crystal, use 200MHz PLL and divide by 4 = 50MHz
 	MAP_SysCtlClockSet(SYSCTL_SYSDIV_4 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
 			SYSCTL_XTAL_16MHZ);
+}
+
+static void
+uart_init(void) {
+  MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+
+  // Configure PA0 and PA1 for UART
+  MAP_GPIOPinConfigure(GPIO_PA0_U0RX);
+  MAP_GPIOPinConfigure(GPIO_PA1_U0TX);
+  MAP_GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+  UARTStdioInitExpClk(0, 115200);
+}
+
+static void
+spi_init(void) {
+  MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+
+  // Configure SSI1 for SPI RAM usage
+  MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI2);
+  MAP_GPIOPinConfigure(GPIO_PB4_SSI2CLK);
+  MAP_GPIOPinConfigure(GPIO_PB6_SSI2RX);
+  MAP_GPIOPinConfigure(GPIO_PB7_SSI2TX);
+  MAP_GPIOPinTypeSSI(GPIO_PORTB_BASE, GPIO_PIN_4 | GPIO_PIN_6 | GPIO_PIN_7);
+  MAP_SSIConfigSetExpClk(SSI2_BASE, MAP_SysCtlClockGet(), SSI_FRF_MOTO_MODE_0,
+                         SSI_MODE_MASTER, 1000000, 8);
+  MAP_SSIEnable(SSI2_BASE);
+
+  unsigned long b;
+  while(MAP_SSIDataGetNonBlocking(SSI2_BASE, &b)) {}
 }
 
 static void
@@ -261,6 +301,7 @@ void timer0_int_handler(void) {
 #if 0
 	for(int l=0; l<15; l+=1) {
 		for(int i=0; i<8; i++) {
+                  for(current_color=0; current_color<3; current_color++) 
 			shift_out_row(ROW(i), fb[i], l);
 		}
 	}

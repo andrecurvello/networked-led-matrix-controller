@@ -47,6 +47,7 @@ void hardfault_handler(void);
 
 extern void timer0_int_handler(void);
 extern void timer0b_int_handler(void);
+extern void UARTStdioIntHandler(void);
 
 //-----------------------------------------------------------------------------
 // 						     Variables declarations
@@ -97,7 +98,7 @@ void(* myvectors[])(void) = {
 	empty_def_handler,		// GPIO Port C						18
 	empty_def_handler,		// GPIO Port D						19
 	empty_def_handler,		// GPIO Port E						20
-	empty_def_handler,		// UART 0							21
+	UARTStdioIntHandler,		// UART 0							21
 	empty_def_handler,		// UART 1							22
 	empty_def_handler,		// SSI 0							23
 	empty_def_handler,		// I2C 0							24
