@@ -26,6 +26,7 @@
 
 #include "font.h"
 #include "enc28j60.h"
+#include "jenkins-api-client.h"
 
 #define delayMs(ms) (SysCtlDelay(((SysCtlClockGet() / 3) / 1000)*ms))
 
@@ -179,9 +180,9 @@ main(void) {
 	//memcpy(fb, static_data, 128);
 
 	unsigned long last_arp_time, last_tcp_time, last_dhcp_coarse_time,
-		      last_dhcp_fine_time;
+		      last_dhcp_fine_time, last_status_time;
 
-	last_arp_time = last_tcp_time = last_dhcp_coarse_time = last_dhcp_fine_time = 0;
+	last_status_time = last_arp_time = last_tcp_time = last_dhcp_coarse_time = last_dhcp_fine_time = 0;
 
 	// Do nothing :-)
 	while(true) {
@@ -226,6 +227,13 @@ main(void) {
 			if( (tickCounter - last_dhcp_fine_time) * TICK_MS >= DHCP_FINE_TIMER_MSECS) {
 				dhcp_fine_tmr();
 				last_dhcp_fine_time = tickCounter;
+			}
+
+			if( (tickCounter - last_status_time) * TICK_MS >= 5000 ) {
+				ip_addr_t addr;
+				IP4_ADDR(&addr, 10, 0, 0, 239);
+				jenkins_get_status(addr);
+				last_status_time = tickCounter;
 			}
 		}
 		
@@ -431,6 +439,11 @@ enc28j60_comm_init(void) {
 	//  MAP_GPIOPinWrite(GPIO_PORTA_BASE, ENC_RESET, 0);
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
 	//MAP_GPIOPinWrite(GPIO_PORTA_BASE, SRAM_CS, SRAM_CS);
+	MAP_IntEnable(INT_GPIOE);
+
+	MAP_GPIOIntTypeSet(GPIO_PORTE_BASE, ENC_INT, GPIO_FALLING_EDGE);
+	MAP_GPIOPinIntClear(GPIO_PORTE_BASE, ENC_INT);
+	MAP_GPIOPinIntEnable(GPIO_PORTE_BASE, ENC_INT);
 }
 
 void GPIOPortEIntHandler(void) {

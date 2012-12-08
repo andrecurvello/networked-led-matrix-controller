@@ -122,6 +122,7 @@ SRC_LWIP=$(DIR_LWIP)/core/raw.c \
 SRC = LM4F_startup.c \
       main.c \
       enc28j60.c \
+      jenkins-api-client.c \
       ${STELLARISWARE_PATH}/utils/uartstdio.c \
 	${SRC_LWIP}
 
