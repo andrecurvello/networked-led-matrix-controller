@@ -130,7 +130,7 @@ main(void) {
 	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 255);
 
 	MAP_IntEnable(INT_TIMER0A);
-	MAP_IntEnable(INT_TIMER0B);
+	//MAP_IntEnable(INT_TIMER0B);
 
 	MAP_TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT | TIMER_TIMB_TIMEOUT);
 	MAP_TimerEnable(TIMER0_BASE, TIMER_BOTH);
@@ -170,14 +170,16 @@ main(void) {
 	for(int i=0; i<8; i++) {
 		for(int l=0; l<8; l++) {
 			//fb[i][l] = ((font[msg[next_char]-32][i] >> (7-l)) & 0x1) * COLOR(15,15,0); //msg_color[next_char];
-			//fb[i][l] = static_data[i][l];
-			fb[i][l] = 0;
+			fb[i][l] = static_data[i][l];
+			//fb[i][l] = 0;
 		}
 	}
 
         UARTprintf("Welcome\n");
 
 	//memcpy(fb, static_data, 128);
+
+	set_char('!', COLOR(0, 15, 0));
 
 	unsigned long last_arp_time, last_tcp_time, last_dhcp_coarse_time,
 		      last_dhcp_fine_time, last_status_time;
@@ -466,3 +468,10 @@ sys_now(void) {
 	return tickCounter;
 }
 
+void set_char(char c, uint16_t color) {
+	for(int i=0; i<8; i++) {
+		for(int l=0; l<8; l++) {
+			fb[i][l] = ((font[c-32][i] >> (7-l)) & 0x1) * color;
+		}
+	}
+}
