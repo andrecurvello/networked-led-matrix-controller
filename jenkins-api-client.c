@@ -2,6 +2,8 @@
 #include "vartext.h"
 #include <stdbool.h>
 
+#include "json.h"
+
 #define RED_SHIFT               0
 #define GREEN_SHIFT     	4
 #define COLOR(r,g,b) 		((r & 0xFF)+((g & 0xFF)<<GREEN_SHIFT))
@@ -238,9 +240,14 @@ jac_parse_constant_char(struct jac_state *state, uint8_t *buf, uint16_t len, int
 	return buf;
 }
 
+void event_handler(int event, void *data) {
+}
+
 static void
 jac_parse_response(struct jac_state *state, uint8_t *buf, uint16_t len) 
 {
+	json_parse_buf(NULL, buf, len);
+#if 0
 	uint8_t *ptr = buf;
 	uint8_t *next;
 
@@ -447,4 +454,5 @@ jac_parse_response(struct jac_state *state, uint8_t *buf, uint16_t len)
 			ptr = next;
 		}
 	}
+#endif
 }
