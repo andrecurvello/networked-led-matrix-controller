@@ -124,6 +124,7 @@ static void
 jac_error(void *arg, err_t err) 
 {
 	UARTprintf("Error: %d\n", err);
+	set_message("ERROR ", 6);
 	if( arg != NULL ) {
 		mem_free(arg);
 	}
