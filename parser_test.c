@@ -66,7 +66,6 @@ main(int argc, char *argv[]) {
 }
 
 static char names[5][20];
-static int level = -1;
 
 void
 event_handler(int event, void *data)
@@ -76,6 +75,7 @@ event_handler(int event, void *data)
 	static bool setColor = false;
 	static bool setName = false;
 	static bool isMatch = false;
+	static int level = -1;
 
 	switch(event) {
 		case EVENT_STRUCT_START:

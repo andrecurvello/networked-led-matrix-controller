@@ -7,6 +7,7 @@ parser_init(struct ParserState *ps, int *stack, int size, int initialState)
 	ps->stackSize = size;
 	ps->stackTop = 0;
 	ps->stateStack[0] = initialState;
+	ps->lastOperation = OP_NONE;
 }
 
 void

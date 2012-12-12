@@ -2,12 +2,14 @@
 #include "vartext.h"
 #include <stdbool.h>
 
+#include "font.h"
 #include "json.h"
 
 #define RED_SHIFT               0
 #define GREEN_SHIFT     	4
 #define COLOR(r,g,b) 		((r & 0xFF)+((g & 0xFF)<<GREEN_SHIFT))
 extern void set_char(char c, uint16_t color);
+extern void set_message(char *buf, uint16_t len);
 
 #define delayMs(ms) (SysCtlDelay(((SysCtlClockGet() / 3) / 1000)*ms))
 
@@ -48,11 +50,11 @@ enum jac_parse_states
 struct jac_state
 {
 	enum jac_states state;
-	enum jac_parse_states parse_state;
 	struct tcp_pcb *pcb;
-	uint8_t jacp_data[200];
-	uint8_t jacp_data_used;
-	bool got_match;
+	int stateStack[50];
+	struct ParserState parser_state;
+	bool header_done;
+	int match;
 };
 
 static void jac_error(void *arg, err_t err);
@@ -61,14 +63,19 @@ static err_t jac_connected(void *arg, struct tcp_pcb *tpcb, err_t err);
 static err_t jac_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
 static void jac_parse_response(struct jac_state *state, uint8_t *buf, uint16_t len);
 
+static int jobsLevel = 0;
+static char currentColor[10];
+static bool setColor = false;
+static bool setName = false;
+static bool isMatch = false;
+static int level = -1;
+
 void
 jenkins_get_status(ip_addr_t addr) {
 	struct tcp_pcb *pcb;
 	
 	pcb = tcp_new();
 	
-	UARTprintf("Getting status\n");
-
 	if( pcb == NULL ) {
 		UARTprintf("Could not allocate TCP PCB\n");
 		return;
@@ -86,9 +93,18 @@ jenkins_get_status(ip_addr_t addr) {
 
 	state->state = JAC_CONNECTING;
 	state->pcb = pcb;
-	state->parse_state = JACP_HEADER_RESULT;
+	state->header_done = false;
+	state->match = 0;
+	parser_init(&state->parser_state, state->stateStack, 50, ST_OBJECT);
+	/*state->parse_state = JACP_HEADER_RESULT;
 	state->jacp_data_used = 0;
-	state->got_match = false;
+	state->got_match = false;*/
+
+	jobsLevel = 0;
+	setColor = false;
+	setName = false;
+	isMatch = false;
+	level = -1;
 
 	tcp_arg(pcb, state);
 	tcp_err(pcb, jac_error);
@@ -98,6 +114,7 @@ jenkins_get_status(ip_addr_t addr) {
 	int ret;
 	if( ( ret = tcp_connect(pcb, &addr, 8080, jac_connected) ) != ERR_OK ) {
 		UARTprintf("Could not connect (%d)\n", ret);
+		set_message("UNABLE TO CONNECT  ", 19);
 		tcp_close(pcb);
 		mem_free(state);
 	}
@@ -136,11 +153,11 @@ static err_t
 jac_connected(void *arg, struct tcp_pcb *tpcb, err_t err)
 {
 	char buf[200];
-	UARTprintf("Connected\n");
+	//UARTprintf("Connected\n");
 
 	char *buf_end = request_header_expand(buf, "10.0.0.239");
 	buf_end[1] = '\0';
-	UARTprintf("%s\n", buf);
+	//UARTprintf("%s\n", buf);
 
 	if( tcp_write(tpcb, buf, buf_end - buf, TCP_WRITE_FLAG_COPY) != ERR_OK ) {
 		UARTprintf("Error writing\n");
@@ -154,10 +171,10 @@ jac_connected(void *arg, struct tcp_pcb *tpcb, err_t err)
 static err_t
 jac_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 {
-	UARTprintf("Got data\n");
+	//UARTprintf("Got data\n");
 
 	if( p == NULL) {
-		UARTprintf("NULL data, remote closed\n");
+		//UARTprintf("NULL data, remote closed\n");
 		tcp_close(tpcb);
 		mem_free(arg);
 		return ERR_OK;
@@ -168,29 +185,10 @@ jac_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 		jac_parse_response((struct jac_state*)arg, (uint8_t*)q->payload, q->len);
 	}
 
-	UARTprintf("\n");
 	tcp_recved(tpcb, p->tot_len);
 	pbuf_free(p);
 
 	return ERR_OK;
-}
-
-static char*
-jac_find_eol(uint8_t *buf, uint16_t len) {
-	for(int i=0; i<len; i++) {
-		if( buf[i] == '\r' && buf[i+1] == '\n' ) 
-			return buf+i;
-	}
-	return NULL;
-}
-
-static char*
-jac_index(uint8_t ch, uint8_t *buf, uint16_t len) {
-	for(int i=0; i<len; i++) {
-		if( buf[i] == ch )
-			return buf+i;
-	}
-	return NULL;
 }
 
 static void
@@ -199,260 +197,109 @@ jac_print(uint8_t *buf, uint16_t len)
 	for(int i=0; i<len; i++) {
 		UARTprintf("%c", buf[i]);
 	}
+	UARTprintf("\n");
 }
 
-static uint8_t*
-jac_skip_ws(uint8_t *buf, uint16_t len)
+
+void
+event_handler(int event, void *data)
 {
-	for(int i=0; (*buf == ' ' || *buf == '\t' || *buf == '\r' || *buf == '\n') && i<len; buf++, i++);
-	return buf;
-}
 
-static uint8_t*
-jac_copy_until(uint8_t *buf, uint16_t buf_len, uint8_t *src, uint16_t src_len, uint8_t ch)
-{
-	uint16_t len = buf_len > src_len ? src_len : buf_len;
+	//UARTprintf("event: %d\n", event);
 
-	int i;
+	switch(event) {
+		case EVENT_STRUCT_START:
+			level++;
+		//	UARTprintf("START struct\n");
+			if( jobsLevel >= 1 ) {
+				jobsLevel++;
+				isMatch = false;
+			}
+		break;
+		case EVENT_STRUCT_END:
+			level--;
+			if( jobsLevel == 3 ) {
+				if( isMatch )  {
+					UARTprintf("Color is %s\n", currentColor);
+					if( strncmp(currentColor, "red", 3) == 0) {
+						set_char(FONT_SAD_SMILEY, COLOR(15, 0, 0));
+					} else if( strncmp(currentColor, "yellow", 6) == 0) {
+						set_char(FONT_HAPPY_SMILEY, COLOR(15,15,0));
+					} else {
+						set_char(FONT_HAPPY_SMILEY, COLOR(0, 15, 0));
+					}
+				}
+			}
+			if( jobsLevel > 0 )
+				jobsLevel--;
+			//UARTprintf("END struct\n");
+		break;
+		case EVENT_ARRAY_START:
+			//UARTprintf("START array\n");
+			if( jobsLevel == 1 ) {
+				jobsLevel++;
+			}
+		break;
+		case EVENT_ARRAY_END:
+			//UARTprintf("END array\n");
+			if( jobsLevel == 2 ) {
+				jobsLevel--;
+			}
+		break;
+		case EVENT_KEY:
+			//strcpy(names[level], (char*)data);
+			//UARTprintf("Key: %s\n", (char*)data);
+			if( level == 0 && strncmp("jobs", data, 4) == 0) {
+				jobsLevel++;
+			}
+			if( jobsLevel == 3 && strncmp((char*)data, "color", 5) == 0) {
+				setColor = true;
+			} else {
+				setColor = false;
+			}
 
-	for(i=0; i<len && src[i] != ch; i++) {
-		buf[i] = src[i];
+			if( jobsLevel == 3 && strncmp((char*)data, "name", 4) == 0) {
+				setName = true;
+			} else {
+				setName = false;
+			}
+		break;
+		case EVENT_STRING:
+			for(int i=0; i<=level; i++) {
+				//printf("%s.", names[i]);
+			}
+			//UARTprintf(" = %s\n", (char*)data);
+			//UARTprintf("setName: %d\njobsLevel: %d\n", setName, jobsLevel);
+			if( setColor && jobsLevel == 3 ) {
+				strcpy(currentColor, (char*)data);
+			} else if( setName && jobsLevel == 3 && strncmp((char*)data, "api-client-base", 15) == 0) {
+				isMatch = true;
+			}
+		break;
+		default:
+		break;
 	}
-
-	return src+i;
-}
-
-static uint8_t*
-jac_parse_constant_char(struct jac_state *state, uint8_t *buf, uint16_t len, int next_state, uint8_t ch)
-{
-	uint8_t *next;
-	next = jac_skip_ws(buf, len);
-	len -= next-buf;
-	buf = next;
-
-	if( *buf == ch ) {
-		state->parse_state = next_state;
-		//UARTprintf("Got '%c'\n", ch);
-		buf++;
-	} else {
-		state->parse_state = JACP_INVALID;
-	}
-	return buf;
-}
-
-void event_handler(int event, void *data) {
 }
 
 static void
 jac_parse_response(struct jac_state *state, uint8_t *buf, uint16_t len) 
 {
-	json_parse_buf(NULL, buf, len);
-#if 0
-	uint8_t *ptr = buf;
-	uint8_t *next;
-
-	//UARTprintf("State: %d\n", state->parse_state);
-
-	while( len > 0 && state->parse_state != JACP_INVALID) {
-		if( state->parse_state == JACP_HEADER_RESULT ) {
-			next = jac_index(' ', ptr, len);
-
-			if( strncmp(ptr, "HTTP/1", 6) != 0 ) {
-				UARTprintf("Invalid response\n");
-				state->parse_state = JACP_INVALID;
-				return;
-			}
-
-			ptr = next + 1;
-			len -= next-ptr;
-
-			next = jac_find_eol(ptr, len);
-
-			if( strncmp(ptr, "200 OK", 6) != 0 ) {
-				UARTprintf("Invalid response");
-				state->parse_state = JACP_INVALID;
-				return;
-			}
-
-			ptr = next + 1;
-			len -= next-ptr;
-
-			UARTprintf("Response ok\n");
-
-			state->parse_state = JACP_HEADER_DATA;
-		}
-
-		if( state->parse_state == JACP_HEADER_DATA) {
-			// We skip all headers, so we are just looking for \r\n\r\n
-			// We assume that \r\n\r\n is in a entire frame, which might not
-			// be the case.
-			for(int i = 0; i<len-4; i++) {
-				if( ptr[i] == '\r' && ptr[i+1] == '\n' &&
-						ptr[i+2] == '\r' && ptr[i+3] == '\n' ) {
-					state->parse_state = JACP_DATA_START;
-					ptr += i+4;
-					len -= i+4;
-					//UARTprintf("Header done, first char: %c\n", *ptr);
+	static const char header_match[] = "\r\n\r\n";
+	if( !state->header_done ) {
+		for(;len>0;len--,buf++) {
+			if( *buf == header_match[state->match] ) {
+				state->match++;
+				if( state->match >= 4 ) {
+					state->header_done = true;
 					break;
 				}
-			}
-		}
-
-		// We are looking for the entry in "jobs" that matches name == api-client-base.
-		// Frame may split at any time, so we have an internal cache where we keep
-		// data between frames
-		if( state->parse_state == JACP_DATA_START) {
-			next = jac_skip_ws(ptr, len);
-			len -= next-ptr;
-			ptr = next;
-
-			if( *ptr == '{' ) {
-				state->parse_state = JACP_DATA_JOBS_START;
-				//UARTprintf("Got '{'\n");
-				ptr++;
-				len--;
 			} else {
-				UARTprintf("Expected '{', but got '%c'", *ptr);
-				state->parse_state = JACP_INVALID;
+				state->match = 0;
 			}
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_START ) {
-			next = jac_parse_constant_char(state, ptr, len, JACP_DATA_JOBS_KEY_STRING, '"');
-			len -= next - ptr;
-			ptr = next;
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_KEY_STRING ) {
-			/* Copy everything into jacp_data until '"' */
-			next = jac_copy_until(state->jacp_data, 200, ptr, len, '"');
-			state->jacp_data_used += next - ptr;
-			len -= next - ptr;
-			ptr = next;
-
-			//UARTprintf("Next: %c\n", *next);
-
-			if( *next == '"' ) {
-				ptr++;
-				len--;
-				state->jacp_data[state->jacp_data_used] = '\0';
-				//UARTprintf("Got string: '%s'\n", state->jacp_data);
-				state->parse_state = JACP_DATA_JOBS_COLON;
-			}
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_COLON ) {
-			next = jac_parse_constant_char(state, ptr, len, JACP_DATA_JOBS_START_BRACKET, ':');
-			len -= next - ptr;
-			ptr = next;
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_START_BRACKET ) {
-			next = jac_parse_constant_char(state, ptr, len, JACP_DATA_JOBS_ARRAY, '[');
-			len -= next - ptr;
-			ptr = next;
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_ARRAY ) {
-			next = jac_parse_constant_char(state, ptr, len, JACP_DATA_JOBS_ENTRY_START, '{');
-			len -= next - ptr;
-			ptr = next;
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_ENTRY_START ) {
-			next = jac_parse_constant_char(state, ptr, len, JACP_DATA_JOBS_KEY_STRING, '"');
-			state->jacp_data_used = 0;
-			len -= next - ptr;
-			ptr = next;
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_KEY_STRING ) {
-			/* Copy everything into jacp_data until '"' */
-			next = jac_copy_until(state->jacp_data, 200-state->jacp_data_used, ptr, len, '"');
-			state->jacp_data_used += next - ptr;
-			len -= next - ptr;
-			ptr = next;
-
-			//UARTprintf("Next: %c\n", *next);
-
-			if( *next == '"' ) {
-				ptr++;
-				len--;
-				state->jacp_data[state->jacp_data_used] = '\0';
-				//UARTprintf("Got string: '%s'\n", state->jacp_data);
-				state->parse_state = JACP_DATA_JOBS_ENTRY_COLON;
-				if( strncmp(state->jacp_data, "api-client-base", 15) == 0)  {
-					UARTprintf("Match\n");
-					state->got_match = true;
-				}
-			}
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_ENTRY_COLON ) {
-			next = jac_parse_constant_char(state, ptr, len, JACP_DATA_JOBS_ENTRY_VALUE, ':');
-			len -= next - ptr;
-			ptr = next;
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_ENTRY_VALUE ) {
-			next = jac_parse_constant_char(state, ptr, len, JACP_DATA_JOBS_ENTRY_VALUE_STRING, '"');
-			len -= next - ptr;
-			ptr = next;
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_ENTRY_VALUE_STRING ) {
-			/* Copy everything into jacp_data until '"' */
-			next = jac_copy_until(state->jacp_data, 200-state->jacp_data_used, ptr, len, '"');
-			state->jacp_data_used += next - ptr;
-			len -= next - ptr;
-			ptr = next;
-
-			//UARTprintf("Next: %c\n", *ptr);
-
-			if( *ptr == '"' ) {
-				ptr++;
-				len--;
-				state->jacp_data[state->jacp_data_used] = '\0';
-				UARTprintf("Got value: '%s'\n", state->jacp_data);
-				if( strncmp(state->jacp_data, "yellow", 6) == 0) {
-					set_char('!', COLOR(15, 15, 0));
-				} else if( strncmp(state->jacp_data, "blue", 4) == 0) {
-					set_char('!', COLOR(0, 15, 0));
-				}
-				state->parse_state = JACP_DATA_JOBS_ENTRY_VALUE_DONE;
-			}
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_ENTRY_VALUE_DONE ) {
-			next = jac_skip_ws(ptr, len);
-			len -= next - ptr;
-			ptr = next;
-
-			UARTprintf("ptr: %d\n", *ptr);
-			UARTprintf("len: %d\n", len);
-
-			if( len == 0 )
-				return;
-
-			if( *ptr == ',' ) {
-				ptr++;
-				len--;
-				state->parse_state = JACP_DATA_JOBS_ENTRY_START;
-			} else if( *ptr == '}' ) {
-				ptr++;
-				len--;
-				state->parse_state = JACP_DATA_JOBS_ENTRY_END;
-			} else {
-				UARTprintf("Expected '}' or ',' but got '%c'", *ptr);
-				state->parse_state = JACP_INVALID;
-			}
-		}
-
-		if( state->parse_state == JACP_DATA_JOBS_ENTRY_END ) {
-			next = jac_parse_constant_char(state, ptr, len, JACP_DATA_JOBS_ARRAY, ',');
-			len -= next - ptr;
-			ptr = next;
 		}
 	}
-#endif
+	if( state->header_done ) {
+		//jac_print(buf, len);
+		json_parse_buf(&state->parser_state, buf, len);
+	}
 }

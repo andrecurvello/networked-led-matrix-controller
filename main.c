@@ -75,13 +75,17 @@ const uint16_t static_data[8][8] = {
 };
 volatile uint16_t fb[8][8];
 static volatile int counter = 0;
-const uint8_t msg[] = "!HELLO WORLD!  ";
-const uint8_t msg_len = sizeof(msg)-1;
+volatile uint8_t msg[50];
+uint8_t msg_len;
 uint8_t msg_color[4] = {COLOR(15,0,0), COLOR(0,15,0), COLOR(15,10,0), COLOR(5,15,0)};
 uint8_t next_char = 0;
 uint8_t off = 0;
 volatile static unsigned long events;
 volatile static unsigned long tickCounter;
+uint8_t msg_mode;
+
+#define MODE_STATIC	0
+#define MODE_SCROLL	1
 
 #define FLAG_SYSTICK	0
 #define FLAG_UPDATE	1
@@ -126,11 +130,11 @@ main(void) {
 	// Configure timer 
 	MAP_TimerConfigure(TIMER0_BASE, TIMER_CFG_A_PERIODIC | TIMER_CFG_B_PERIODIC | TIMER_CFG_SPLIT_PAIR);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, ROM_SysCtlClockGet()/20000);
-	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 11000);//ROM_SysCtlClockGet());
+	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
 	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 255);
 
 	MAP_IntEnable(INT_TIMER0A);
-	//MAP_IntEnable(INT_TIMER0B);
+	MAP_IntEnable(INT_TIMER0B);
 
 	MAP_TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT | TIMER_TIMB_TIMEOUT);
 	MAP_TimerEnable(TIMER0_BASE, TIMER_BOTH);
@@ -151,6 +155,10 @@ main(void) {
 	shift_out(0x00);
 	shift_latch();
 
+	strcpy(msg, "LOADING  ");
+	msg_len = 9;
+	msg_mode = MODE_SCROLL;
+
 	enc28j60_comm_init();
 	enc_init(mac_addr);
 
@@ -169,28 +177,35 @@ main(void) {
 
 	for(int i=0; i<8; i++) {
 		for(int l=0; l<8; l++) {
-			//fb[i][l] = ((font[msg[next_char]-32][i] >> (7-l)) & 0x1) * COLOR(15,15,0); //msg_color[next_char];
-			fb[i][l] = static_data[i][l];
-			//fb[i][l] = 0;
+			if( msg_mode == MODE_SCROLL ) {
+				fb[i][l] = ((font[msg[next_char]-32][i] >> (7-l)) & 0x1) * COLOR(0,15,0); //msg_color[next_char];
+			} else {
+			//fb[i][l] = static_data[i][l];
+				fb[i][l] = 0;
+			}
 		}
 	}
+
+	next_char++;
 
         UARTprintf("Welcome\n");
 
 	//memcpy(fb, static_data, 128);
 
-	set_char('!', COLOR(0, 15, 0));
+	//set_char(FONT_HAPPY_SMILEY, COLOR(0, 15, 0));
 
 	unsigned long last_arp_time, last_tcp_time, last_dhcp_coarse_time,
 		      last_dhcp_fine_time, last_status_time;
 
 	last_status_time = last_arp_time = last_tcp_time = last_dhcp_coarse_time = last_dhcp_fine_time = 0;
 
+	bool status_done = false;
+
 	// Do nothing :-)
 	while(true) {
 		MAP_SysCtlSleep();
 #if 1
-		if(HWREGBITW(&events, FLAG_UPDATE) == 1) {
+		if(HWREGBITW(&events, FLAG_UPDATE) == 1 && msg_mode == MODE_SCROLL) {
 			HWREGBITW(&events, FLAG_UPDATE) = 0;
 			counter = 0;
 			for(int i=0; i<8; i++) {
@@ -231,11 +246,12 @@ main(void) {
 				last_dhcp_fine_time = tickCounter;
 			}
 
-			if( (tickCounter - last_status_time) * TICK_MS >= 5000 ) {
+			if( (tickCounter - last_status_time) * TICK_MS >= 20000) {
 				ip_addr_t addr;
 				IP4_ADDR(&addr, 10, 0, 0, 239);
 				jenkins_get_status(addr);
 				last_status_time = tickCounter;
+				status_done = true;
 			}
 		}
 		
@@ -469,9 +485,19 @@ sys_now(void) {
 }
 
 void set_char(char c, uint16_t color) {
+	msg_mode = MODE_STATIC;
 	for(int i=0; i<8; i++) {
 		for(int l=0; l<8; l++) {
 			fb[i][l] = ((font[c-32][i] >> (7-l)) & 0x1) * color;
 		}
 	}
+}
+
+void set_message(char *buf, uint16_t len) {
+	set_char(' ', 0x00);
+	msg_mode = MODE_SCROLL;
+	memcpy(msg, buf, len);
+	msg_len = len;
+	next_char = 0;
+	off = 0;
 }
