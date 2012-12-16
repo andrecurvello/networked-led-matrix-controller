@@ -58,7 +58,10 @@ static void shift_out_data(const uint16_t b[8], uint8_t shift, uint8_t threshold
 static void shift_out_row(uint8_t row, const uint16_t data[8], uint8_t threshold);
 void timer0_int_handler(void);
 void SysTickIntHandler(void);
+void clearDisplay(uint16_t v[8][8]);
+
 static void enc28j60_comm_init(void);
+static void status_callback(const char *name, const char *color);
 
 static int current_intensity = 0;
 static int current_row = 0;
@@ -74,6 +77,7 @@ const uint16_t static_data[8][8] = {
 		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
 };
 volatile uint16_t fb[8][8];
+uint16_t index_view[8][8];
 static volatile int counter = 0;
 volatile uint8_t msg[50];
 uint8_t msg_len;
@@ -83,9 +87,12 @@ uint8_t off = 0;
 volatile static unsigned long events;
 volatile static unsigned long tickCounter;
 uint8_t msg_mode;
+uint8_t curRow, curCol;
+uint8_t updateInterval;
 
 #define MODE_STATIC	0
 #define MODE_SCROLL	1
+#define MODE_INDEX	2
 
 #define FLAG_SYSTICK	0
 #define FLAG_UPDATE	1
@@ -158,6 +165,7 @@ main(void) {
 	strcpy(msg, "LOADING  ");
 	msg_len = 9;
 	msg_mode = MODE_SCROLL;
+	updateInterval = 2;
 
 	enc28j60_comm_init();
 	enc_init(mac_addr);
@@ -195,9 +203,9 @@ main(void) {
 	//set_char(FONT_HAPPY_SMILEY, COLOR(0, 15, 0));
 
 	unsigned long last_arp_time, last_tcp_time, last_dhcp_coarse_time,
-		      last_dhcp_fine_time, last_status_time;
+		      last_dhcp_fine_time, last_status_time, last_change;
 
-	last_status_time = last_arp_time = last_tcp_time = last_dhcp_coarse_time = last_dhcp_fine_time = 0;
+	last_change = last_status_time = last_arp_time = last_tcp_time = last_dhcp_coarse_time = last_dhcp_fine_time = 0;
 
 	bool status_done = false;
 
@@ -205,9 +213,11 @@ main(void) {
 	while(true) {
 		MAP_SysCtlSleep();
 #if 1
-		if(HWREGBITW(&events, FLAG_UPDATE) == 1 && msg_mode == MODE_SCROLL) {
+		if(HWREGBITW(&events, FLAG_UPDATE) == 1 && msg_mode == MODE_INDEX) {
 			HWREGBITW(&events, FLAG_UPDATE) = 0;
-			counter = 0;
+			memcpy(fb, index_view, 128);
+		} else if(HWREGBITW(&events, FLAG_UPDATE) == 1 && msg_mode == MODE_SCROLL) {
+			HWREGBITW(&events, FLAG_UPDATE) = 0;
 			for(int i=0; i<8; i++) {
 				for(int l=0; l<7; l++) {
 					fb[i][l] = fb[i][l+1];
@@ -249,7 +259,8 @@ main(void) {
 			if( (tickCounter - last_status_time) * TICK_MS >= 20000) {
 				ip_addr_t addr;
 				IP4_ADDR(&addr, 10, 0, 0, 239);
-				jenkins_get_status(addr);
+				jenkins_get_status(addr, "10.0.0.239", &status_callback);
+				curRow = curCol = 0;
 				last_status_time = tickCounter;
 				status_done = true;
 			}
@@ -431,10 +442,10 @@ void timer0b_int_handler(void) {
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMB_TIMEOUT);
 
 	counter++;
-	//if( counter > 2) {
+	if( counter > updateInterval) {
 		counter = 0;
 		HWREGBITW(&events, FLAG_UPDATE) = 1;
-	//}
+	}
 /*	v = MAP_GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_3);
 	FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, v ^ GPIO_PIN_3);*/
 }
@@ -500,4 +511,44 @@ void set_message(char *buf, uint16_t len) {
 	msg_len = len;
 	next_char = 0;
 	off = 0;
+}
+
+void clearDisplay(uint16_t v[8][8]) 
+{
+	for(int i=0; i<8; i++) {
+		for(int l=0; l<8; l++) {
+			v[i][l] = 0x00;
+		}
+	}
+}
+
+void status_callback(const char *name, const char *color)
+{
+	if( curRow == 0 && curCol == 0) {
+		clearDisplay(index_view);
+		msg_mode = MODE_INDEX;
+		updateInterval = 2;
+	}
+	UARTprintf("Project %s has color %s\n", name, color);
+	UARTFlushTx(false);
+	uint16_t c;
+
+	if( strncmp(color, "blue", 4) == 0) {
+		c = COLOR(0, 15, 0);
+	} else if( strncmp(color, "disabled", 8) == 0) {
+		return;
+		c = COLOR(15, 15, 0);
+	} else if( strncmp(color, "red", 3) == 0) {
+		c = COLOR(15, 0, 0);
+	}
+	
+	UARTprintf("fb[%d][%d] = %d\n", curRow, curCol, c);
+
+	index_view[curRow][curCol] = c;
+
+	curCol++;
+	if( curCol >= 8 ) {
+		curCol = 0;
+		curRow = (curRow+1) % 7;
+	}
 }

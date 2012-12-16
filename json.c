@@ -21,16 +21,17 @@ static const int string_chars_len = sizeof(string_chars);
 static char string_val[50];
 static int string_val_len = 0;
 
-static char obj_attr_name[50];
+/*static char obj_attr_name[50];
 static char obj_attr_name_len = 0;
 
 static char obj_attr_val[50];
-static char obj_attr_val_len = 0;
+static char obj_attr_val_len = 0;*/
 
 void
-json_parse_buf(struct ParserState *ps, const char *buf, int len) {
+json_parse_buf(struct JSONParserState *json_ps, const char *buf, int len) {
 	bool inc;
 	int prevPopState;
+	struct ParserState *ps = (struct ParserState*)json_ps;
 
 	// Deal with the characters one at a time
 	while(len > 0 && parser_current_state(ps) != ST_INVALID) {
@@ -40,15 +41,15 @@ json_parse_buf(struct ParserState *ps, const char *buf, int len) {
 				prevPopState = parser_prev_pop_state(ps, ST_INVALID);
 				if( prevPopState != ST_INVALID ) {
 					if( prevPopState == ST_STRING ) {
-						event_handler(EVENT_STRING, string_val);
+						json_ps->event_callback(json_ps, EVENT_STRING, string_val);
 					}
 					inc = false;
 					parser_pop_state(ps);
 				} else if( *buf == '{' ) {
-					event_handler(EVENT_STRUCT_START, NULL);
+					json_ps->event_callback(json_ps, EVENT_STRUCT_START, NULL);
 					parser_push_state(ps, ST_OBJ);
 				} else if( *buf == '[' ) {
-					event_handler(EVENT_ARRAY_START, NULL);
+					json_ps->event_callback(json_ps, EVENT_ARRAY_START, NULL);
 					parser_push_state(ps, ST_ARRAY);
 				} else if( *buf == '"' ) {
 					inc = false;
@@ -71,7 +72,7 @@ json_parse_buf(struct ParserState *ps, const char *buf, int len) {
 				if( *buf == ',' ) {
 					parser_replace_state(ps, ST_ARRAY);
 				} else if( *buf == ']' ) {
-					event_handler(EVENT_ARRAY_END, NULL);
+					json_ps->event_callback(json_ps, EVENT_ARRAY_END, NULL);
 					parser_pop_state(ps);
 				} else if( !parser_is_ws(*buf) ) {
 					DPRINTF(("ST_ARRAY_1 push invalid\n"));
@@ -81,17 +82,17 @@ json_parse_buf(struct ParserState *ps, const char *buf, int len) {
 			case ST_OBJ:
 				prevPopState = parser_prev_pop_state(ps, ST_INVALID);
 				if( prevPopState == ST_STRING ) {
-					event_handler(EVENT_KEY, string_val);
-					strcpy(obj_attr_name, string_val);
+					json_ps->event_callback(json_ps, EVENT_KEY, string_val);
+					//strcpy(obj_attr_name, string_val);
 					parser_push_state(ps, ST_OBJ_1);
 					inc = false;
 				} else if( prevPopState == ST_OBJ_1) {
-					strcpy(obj_attr_val, string_val);
+					//strcpy(obj_attr_val, string_val);
 					parser_replace_state(ps, ST_OBJ_2);
 					inc = false;
 				} else if( !parser_is_ws(*buf) ) {
-					obj_attr_name_len = 0;
-					obj_attr_val_len = 0;
+					//obj_attr_name_len = 0;
+					//obj_attr_val_len = 0;
 					parser_push_state(ps, ST_STRING);
 					inc = false;
 				}
@@ -118,7 +119,7 @@ json_parse_buf(struct ParserState *ps, const char *buf, int len) {
 			break;
 			case ST_OBJ_3:
 				if( *buf == '}' ) {
-					event_handler(EVENT_STRUCT_END, NULL);
+					json_ps->event_callback(json_ps, EVENT_STRUCT_END, NULL);
 					parser_pop_state(ps);
 				} else if( !parser_is_ws(*buf) ) {
 					parser_push_state(ps, ST_INVALID);
@@ -141,6 +142,8 @@ json_parse_buf(struct ParserState *ps, const char *buf, int len) {
 					parser_pop_state(ps);
 					string_val[string_val_len] = 0;
 				}  else {
+					/*UARTprintf("C: '%c'\n", *buf);
+					UARTFlushTx(false);*/
 					string_val[string_val_len++] = *buf;
 				}
 			break;

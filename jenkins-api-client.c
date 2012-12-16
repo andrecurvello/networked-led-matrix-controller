@@ -49,29 +49,32 @@ enum jac_parse_states
 
 struct jac_state
 {
-	enum jac_states state;
-	struct tcp_pcb *pcb;
-	int stateStack[50];
-	struct ParserState parser_state;
-	bool header_done;
-	int match;
+	enum jac_states 	state;
+	const char 		*hostname;
+	struct tcp_pcb 		*pcb;
+	int 			stateStack[50];
+	struct JSONParserState 	parser_state;
+	bool 			header_done;
+	int 			match;
+	jac_status_callback_t	status_cb;
+	int level;
+	int jobsLevel;
+	bool isMatch;
+	char currentColor[10];
+	char currentName[50];
+	bool setColor;
+	bool setName;
 };
 
 static void jac_error(void *arg, err_t err);
 static err_t jac_poll(void *arg, struct tcp_pcb *tpcb);
 static err_t jac_connected(void *arg, struct tcp_pcb *tpcb, err_t err);
 static err_t jac_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
-static void jac_parse_response(struct jac_state *state, uint8_t *buf, uint16_t len);
-
-static int jobsLevel = 0;
-static char currentColor[10];
-static bool setColor = false;
-static bool setName = false;
-static bool isMatch = false;
-static int level = -1;
+static void jac_parse_response(struct jac_state *state, const char *buf, uint16_t len);
+static void event_handler(struct JSONParserState *ps, int event, void *data);
 
 void
-jenkins_get_status(ip_addr_t addr) {
+jenkins_get_status(ip_addr_t addr, const char *hostname, jac_status_callback_t cb) {
 	struct tcp_pcb *pcb;
 	
 	pcb = tcp_new();
@@ -95,16 +98,18 @@ jenkins_get_status(ip_addr_t addr) {
 	state->pcb = pcb;
 	state->header_done = false;
 	state->match = 0;
-	parser_init(&state->parser_state, state->stateStack, 50, ST_OBJECT);
+	state->hostname = hostname;
+	state->status_cb = cb;
+	state->level = -1;
+	state->jobsLevel = 0;
+	state->isMatch = false;
+	state->parser_state.event_callback = &event_handler;
+	state->parser_state.user_state = state;
+	//UARTprintf("state: %p\nparser_state: %p\n", state, &state->parser_state);
+	parser_init(&state->parser_state.ps, state->stateStack, 50, ST_OBJECT);
 	/*state->parse_state = JACP_HEADER_RESULT;
 	state->jacp_data_used = 0;
 	state->got_match = false;*/
-
-	jobsLevel = 0;
-	setColor = false;
-	setName = false;
-	isMatch = false;
-	level = -1;
 
 	tcp_arg(pcb, state);
 	tcp_err(pcb, jac_error);
@@ -153,10 +158,11 @@ jac_poll(void *arg, struct tcp_pcb *tpcb)
 static err_t
 jac_connected(void *arg, struct tcp_pcb *tpcb, err_t err)
 {
+	struct jac_state *state = (struct jac_state*)arg;
 	char buf[200];
 	//UARTprintf("Connected\n");
 
-	char *buf_end = request_header_expand(buf, "10.0.0.239");
+	char *buf_end = request_header_expand(buf, state->hostname);
 	buf_end[1] = '\0';
 	//UARTprintf("%s\n", buf);
 
@@ -183,7 +189,7 @@ jac_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 
 	struct pbuf *q;
 	for(q = p; q != NULL; q = q->next) {
-		jac_parse_response((struct jac_state*)arg, (uint8_t*)q->payload, q->len);
+		jac_parse_response((struct jac_state*)arg, (char*)q->payload, q->len);
 	}
 
 	tcp_recved(tpcb, p->tot_len);
@@ -203,87 +209,89 @@ jac_print(uint8_t *buf, uint16_t len)
 
 
 void
-event_handler(int event, void *data)
+event_handler(struct JSONParserState *ps, int event, void *data)
 {
-
-	//UARTprintf("event: %d\n", event);
-
+	struct jac_state *state = ps->user_state;
+	/*UARTprintf("event: %d\nps: %p\nstate: %p\n", event, ps, state);
+	UARTFlushTx(false);*/
+#if 1
 	switch(event) {
 		case EVENT_STRUCT_START:
-			level++;
+			state->level++;
 		//	UARTprintf("START struct\n");
-			if( jobsLevel >= 1 ) {
-				jobsLevel++;
-				isMatch = false;
+			if( state->jobsLevel >= 1 ) {
+				state->jobsLevel++;
 			}
 		break;
 		case EVENT_STRUCT_END:
-			level--;
-			if( jobsLevel == 3 ) {
-				if( isMatch )  {
-					UARTprintf("Color is %s\n", currentColor);
-					if( strncmp(currentColor, "red", 3) == 0) {
+			state->level--;
+			if( state->jobsLevel == 3 ) {
+				state->status_cb(state->currentName, state->currentColor);
+				/*if( state->isMatch )  {
+					UARTprintf("Color is %s\n", state->currentColor);
+					if( strncmp(state->currentColor, "red", 3) == 0) {
 						set_char(FONT_SAD_SMILEY, COLOR(15, 0, 0));
-					} else if( strncmp(currentColor, "yellow", 6) == 0) {
+					} else if( strncmp(state->currentColor, "yellow", 6) == 0) {
 						set_char(FONT_HAPPY_SMILEY, COLOR(15,15,0));
 					} else {
 						set_char(FONT_HAPPY_SMILEY, COLOR(0, 15, 0));
 					}
-				}
+				}*/
 			}
-			if( jobsLevel > 0 )
-				jobsLevel--;
+			if( state->jobsLevel > 0 )
+				state->jobsLevel--;
 			//UARTprintf("END struct\n");
 		break;
 		case EVENT_ARRAY_START:
 			//UARTprintf("START array\n");
-			if( jobsLevel == 1 ) {
-				jobsLevel++;
+			if( state->jobsLevel == 1 ) {
+				state->jobsLevel++;
 			}
 		break;
 		case EVENT_ARRAY_END:
 			//UARTprintf("END array\n");
-			if( jobsLevel == 2 ) {
-				jobsLevel--;
+			if( state->jobsLevel == 2 ) {
+				state->jobsLevel--;
 			}
 		break;
 		case EVENT_KEY:
 			//strcpy(names[level], (char*)data);
 			//UARTprintf("Key: %s\n", (char*)data);
-			if( level == 0 && strncmp("jobs", data, 4) == 0) {
-				jobsLevel++;
+			if( state->level == 0 && strncmp("jobs", data, 4) == 0) {
+				state->jobsLevel++;
 			}
-			if( jobsLevel == 3 && strncmp((char*)data, "color", 5) == 0) {
-				setColor = true;
+			if( state->jobsLevel == 3 && strncmp((char*)data, "color", 5) == 0) {
+				state->setColor = true;
 			} else {
-				setColor = false;
+				state->setColor = false;
 			}
 
-			if( jobsLevel == 3 && strncmp((char*)data, "name", 4) == 0) {
-				setName = true;
+			if( state->jobsLevel == 3 && strncmp((char*)data, "name", 4) == 0) {
+				state->setName = true;
 			} else {
-				setName = false;
+				state->setName = false;
 			}
 		break;
 		case EVENT_STRING:
-			for(int i=0; i<=level; i++) {
+			for(int i=0; i<=state->level; i++) {
 				//printf("%s.", names[i]);
 			}
 			//UARTprintf(" = %s\n", (char*)data);
 			//UARTprintf("setName: %d\njobsLevel: %d\n", setName, jobsLevel);
-			if( setColor && jobsLevel == 3 ) {
-				strcpy(currentColor, (char*)data);
-			} else if( setName && jobsLevel == 3 && strncmp((char*)data, "api-client-base", 15) == 0) {
-				isMatch = true;
+			if( state->setColor && state->jobsLevel == 3 ) {
+				strcpy(state->currentColor, (char*)data);
+			} else if( state->setName && state->jobsLevel == 3) {
+				strcpy(state->currentName, (char*)data);
 			}
 		break;
 		default:
 		break;
 	}
+#endif
 }
 
 static void
-jac_parse_response(struct jac_state *state, uint8_t *buf, uint16_t len) 
+jac_parse_response(struct jac_state *state, const char *buf, uint16_t len) 
 {
 	static const char header_match[] = "\r\n\r\n";
 	if( !state->header_done ) {

@@ -3,6 +3,8 @@
 
 #include "lwip/tcp.h"
 
-void jenkins_get_status(ip_addr_t addr);
+typedef void(*jac_status_callback_t)(const char *name, const char *color);
+
+void jenkins_get_status(ip_addr_t addr, const char *hostname, jac_status_callback_t cb);
 
 #endif

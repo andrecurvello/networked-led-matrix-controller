@@ -14,7 +14,7 @@
 #define MEM_ALIGNMENT			4
 
 /* Heap memory size */
-#define MEM_SIZE			3 * 1024
+#define MEM_SIZE			2 * 1024
 
 #define ETH_PAD_SIZE			0
 

@@ -36,7 +36,16 @@ enum States {
 #define EVENT_KEY		5
 #define EVENT_STRING		6
 
-void event_handler(int event, void *data);
-void json_parse_buf(struct ParserState *ps, const char *buf, int len);
+struct JSONParserState;
+
+typedef void (*json_event_callback_t)(struct JSONParserState *ps, int event, void *data);
+
+struct JSONParserState {
+	struct ParserState 	ps;
+	json_event_callback_t 	event_callback;
+	void			*user_state;
+};
+
+void json_parse_buf(struct JSONParserState *ps, const char *buf, int len);
 
 #endif
