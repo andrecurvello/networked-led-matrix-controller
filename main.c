@@ -23,6 +23,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "font.h"
 #include "enc28j60.h"
@@ -30,7 +31,6 @@
 #include "led_matrix.h"
 
 #define delayMs(ms) (SysCtlDelay(((SysCtlClockGet() / 3) / 1000)*ms))
-
 
 static inline void cpu_init(void);
 static inline void uart_init(void);
@@ -40,6 +40,8 @@ void SysTickIntHandler(void);
 
 static void enc28j60_comm_init(void);
 static void status_callback(const char *name, const char *color);
+
+static void indexDisplay(void);
 
 const uint16_t static_data[8][8] = {
 		{0xFF, 0xF0, 0xFF, 0x0F, 0xFF, 0x00, 0xFF, 0x00},
@@ -52,11 +54,9 @@ const uint16_t static_data[8][8] = {
 		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
 };
 uint16_t index_view[8][8];
-static volatile int counter = 0;
 volatile static unsigned long events;
 volatile static unsigned long tickCounter;
 uint8_t curRow, curCol;
-uint8_t updateInterval;
 
 #define FLAG_SYSTICK	0
 #define FLAG_UPDATE	1
@@ -122,17 +122,9 @@ main(void) {
 	FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, 0);
 	FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, 0);
 
-	/*shift_out(0x00);
-	shift_out(0x00);
-	shift_latch();*/
-
-	/*strcpy(msg, "LOADING  ");
-	msg_len = 9;
-	msg_mode = MODE_SCROLL;*/
+	displayInit();
 	set_message("LOADING  ", 9);
 	
-	updateInterval = 2;
-
 	enc28j60_comm_init();
 	enc_init(mac_addr);
 
@@ -180,15 +172,16 @@ main(void) {
 	// Do nothing :-)
 	while(true) {
 		MAP_SysCtlSleep();
-#if 1
+#if 0
 		if(HWREGBITW(&events, FLAG_UPDATE) == 1 && msg_mode == MODE_INDEX) {
 			HWREGBITW(&events, FLAG_UPDATE) = 0;
 			memcpy(fb, index_view, 128);
-		} else if(HWREGBITW(&events, FLAG_UPDATE) == 1 && msg_mode == MODE_SCROLL) {
-			HWREGBITW(&events, FLAG_UPDATE) = 0;
-			displayScrollTick();
-		}
+		} else 
 #endif
+		if(HWREGBITW(&events, FLAG_UPDATE) == 1) {
+			HWREGBITW(&events, FLAG_UPDATE) = 0;
+			displayAnimTick();
+		}
 		if(HWREGBITW(&events, FLAG_SYSTICK) == 1) {
 			HWREGBITW(&events, FLAG_SYSTICK) = 0;
 
@@ -267,19 +260,14 @@ spi_init(void) {
 }
 
 void timer0_int_handler(void) {
-	long v;
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 	displayTick();
 }
 
 void timer0b_int_handler(void) {
-	long v;
-
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMB_TIMEOUT);
 
-	counter++;
-	if( counter > updateInterval) {
-		counter = 0;
+	if( displayCheckUpdate() ) {
 		HWREGBITW(&events, FLAG_UPDATE) = 1;
 	}
 /*	v = MAP_GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_3);
@@ -334,13 +322,13 @@ sys_now(void) {
 void status_callback(const char *name, const char *color)
 {
 	if( curRow == 0 && curCol == 0) {
-		clearDisplay(index_view);
-		msg_mode = MODE_INDEX;
-		updateInterval = 2;
+		//clearDisplay(index_view);
+		memcpy(fb, index_view, 128);
+		displaySetAnim(indexDisplay, 2);
 	}
 	UARTprintf("Project %s has color %s\n", name, color);
 	UARTFlushTx(false);
-	uint16_t c;
+	uint16_t c = 0;
 
 	if( strncmp(color, "blue", 4) == 0) {
 		c = COLOR(0, 15, 0);
@@ -360,4 +348,10 @@ void status_callback(const char *name, const char *color)
 		curCol = 0;
 		curRow = (curRow+1) % 7;
 	}
+}
+
+static void
+indexDisplay(void)
+{
+	memcpy(fb, index_view, 128);
 }

@@ -14,6 +14,17 @@ uint8_t off = 0;
 static int current_intensity = 0;
 static int current_row = 0;
 static int current_color = 0;
+static display_anim_callback_t display_anim_cb;
+static uint8_t display_interval = 0;
+static volatile uint8_t display_counter;
+
+void displayInit(void) 
+{
+	msg_mode = MODE_STATIC;
+	memset(fb, 0, 128);
+	display_interval = 2;
+	display_counter = 0;
+}
 
 static void
 shift_latch(void) {
@@ -97,7 +108,7 @@ void set_char(char c, uint16_t color) {
 
 void set_message(char *buf, uint16_t len) {
 	set_char(' ', 0x00);
-	msg_mode = MODE_SCROLL;
+	displaySetAnim(displayScrollTick, 2);
 	memcpy(msg, buf, len);
 	msg_len = len;
 	next_char = 0;
@@ -180,4 +191,35 @@ void inline displayScrollTick(void)
 					next_char = 0;
 				}
 			}
+}
+
+void
+displaySetAnim(display_anim_callback_t cb, uint8_t interval)
+{
+	msg_mode = MODE_ANIM;
+	display_anim_cb = cb;
+	display_interval = interval;
+	display_counter = 0;
+}
+
+uint8_t
+displayGetInterval(void)
+{
+	return display_interval;
+}
+
+bool displayCheckUpdate(void)
+{
+	display_counter++;
+	if( display_counter >= display_interval ) {
+		display_counter = 0;
+		return true;
+	}
+	return false;
+}
+
+void
+displayAnimTick(void)
+{
+	display_anim_cb();
 }

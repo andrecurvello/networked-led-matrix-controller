@@ -2,6 +2,8 @@
 #define _LED_MATRIX_H
 
 #include <stdint.h>
+#include <stdbool.h>
+
 #include <inc/hw_ints.h>
 #include <inc/hw_types.h>
 #include <inc/hw_memmap.h>
@@ -32,12 +34,18 @@ uint8_t msg_mode;
 volatile uint16_t fb[8][8];
 
 #define MODE_STATIC	0
-#define MODE_SCROLL	1
-#define MODE_INDEX	2
+#define MODE_ANIM	1
+
+typedef void (*display_anim_callback_t)(void);
 
 void set_message(char *buf, uint16_t len);
 void clearDisplay(uint16_t v[8][8]);
 void displayTick(void);
 void displayScrollTick(void);
+void displayInit(void);
+void displaySetAnim(display_anim_callback_t cb, uint8_t interval);
+uint8_t displayGetInterval(void);
+bool displayCheckUpdate(void);
+void displayAnimTick(void);
 
 #endif
