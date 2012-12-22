@@ -27,45 +27,20 @@
 #include "font.h"
 #include "enc28j60.h"
 #include "jenkins-api-client.h"
+#include "led_matrix.h"
 
 #define delayMs(ms) (SysCtlDelay(((SysCtlClockGet() / 3) / 1000)*ms))
 
-#define ROW(n) 			(1<<n)
-
-#define RED_SHIFT               0
-#define GREEN_SHIFT     	4
-
-#define COLOR(r,g,b) 		((r & 0xFF)+((g & 0xFF)<<GREEN_SHIFT))
-
-#define CLK_OUT_PORT		GPIO_PORTA_BASE
-#define CLK_OUT_PIN		GPIO_PIN_4
-
-#define LATCH_PORT		GPIO_PORTA_BASE
-#define LATCH_PIN		GPIO_PIN_3
-
-#define SER_OUT_PORT		GPIO_PORTA_BASE
-#define SER_OUT_PIN		GPIO_PIN_2
-
-
-#define FAST_GPIOPinWrite(ulPort, ucPins, ucVal) HWREG(ulPort + (GPIO_O_DATA + (ucPins << 2))) = ucVal
 
 static inline void cpu_init(void);
 static inline void uart_init(void);
 static inline void spi_init(void);
-static void shift_latch(void);
-static void shift_out(uint8_t b);
-static void shift_out_data(const uint16_t b[8], uint8_t shift, uint8_t threshold);
-static void shift_out_row(uint8_t row, const uint16_t data[8], uint8_t threshold);
 void timer0_int_handler(void);
 void SysTickIntHandler(void);
-void clearDisplay(uint16_t v[8][8]);
 
 static void enc28j60_comm_init(void);
 static void status_callback(const char *name, const char *color);
 
-static int current_intensity = 0;
-static int current_row = 0;
-static int current_color = 0;
 const uint16_t static_data[8][8] = {
 		{0xFF, 0xF0, 0xFF, 0x0F, 0xFF, 0x00, 0xFF, 0x00},
 		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
@@ -76,23 +51,12 @@ const uint16_t static_data[8][8] = {
 		{0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00},
 		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
 };
-volatile uint16_t fb[8][8];
 uint16_t index_view[8][8];
 static volatile int counter = 0;
-volatile uint8_t msg[50];
-uint8_t msg_len;
-uint8_t msg_color[4] = {COLOR(15,0,0), COLOR(0,15,0), COLOR(15,10,0), COLOR(5,15,0)};
-uint8_t next_char = 0;
-uint8_t off = 0;
 volatile static unsigned long events;
 volatile static unsigned long tickCounter;
-uint8_t msg_mode;
 uint8_t curRow, curCol;
 uint8_t updateInterval;
-
-#define MODE_STATIC	0
-#define MODE_SCROLL	1
-#define MODE_INDEX	2
 
 #define FLAG_SYSTICK	0
 #define FLAG_UPDATE	1
@@ -138,7 +102,7 @@ main(void) {
 	MAP_TimerConfigure(TIMER0_BASE, TIMER_CFG_A_PERIODIC | TIMER_CFG_B_PERIODIC | TIMER_CFG_SPLIT_PAIR);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, ROM_SysCtlClockGet()/20000);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
-	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 255);
+	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 100);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);
@@ -158,13 +122,15 @@ main(void) {
 	FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, 0);
 	FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, 0);
 
+	/*shift_out(0x00);
 	shift_out(0x00);
-	shift_out(0x00);
-	shift_latch();
+	shift_latch();*/
 
-	strcpy(msg, "LOADING  ");
+	/*strcpy(msg, "LOADING  ");
 	msg_len = 9;
-	msg_mode = MODE_SCROLL;
+	msg_mode = MODE_SCROLL;*/
+	set_message("LOADING  ", 9);
+	
 	updateInterval = 2;
 
 	enc28j60_comm_init();
@@ -183,6 +149,7 @@ main(void) {
 	netif_set_default(&netif);
 	dhcp_start(&netif);
 
+#if 0
 	for(int i=0; i<8; i++) {
 		for(int l=0; l<8; l++) {
 			if( msg_mode == MODE_SCROLL ) {
@@ -195,6 +162,7 @@ main(void) {
 	}
 
 	next_char++;
+#endif
 
         UARTprintf("Welcome\n");
 
@@ -218,20 +186,7 @@ main(void) {
 			memcpy(fb, index_view, 128);
 		} else if(HWREGBITW(&events, FLAG_UPDATE) == 1 && msg_mode == MODE_SCROLL) {
 			HWREGBITW(&events, FLAG_UPDATE) = 0;
-			for(int i=0; i<8; i++) {
-				for(int l=0; l<7; l++) {
-					fb[i][l] = fb[i][l+1];
-				}
-				fb[i][7] = ((font[msg[next_char]-32][i] >> (7-off)) & 0x1) * COLOR(0, 15, 0); //msg_color[next_char];
-			}
-			off++;
-			if( off >= 8) {
-				off = 0;
-				next_char++;
-				if( next_char >= msg_len) {
-					next_char = 0;
-				}
-			}
+			displayScrollTick();
 		}
 #endif
 		if(HWREGBITW(&events, FLAG_SYSTICK) == 1) {
@@ -311,129 +266,10 @@ spi_init(void) {
   while(MAP_SSIDataGetNonBlocking(SSI2_BASE, &b)) {}
 }
 
-static void
-shift_latch(void) {
-	//P1OUT |= LATCH_OUT;
-	FAST_GPIOPinWrite(LATCH_PORT, LATCH_PIN, LATCH_PIN);
-	//delayMs(1);
-	FAST_GPIOPinWrite(LATCH_PORT, LATCH_PIN, 0);
-	//P1OUT &= ~LATCH_OUT;
-}
-
-
-static void
-shift_out(uint8_t b) {
-	for(int i=0;i<8; i++) {
-		if( b & 0x1) {
-			FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, SER_OUT_PIN);
-			//P1OUT |= SER_OUT;
-		} else {
-			//P1OUT &= ~SER_OUT;
-			FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, 0);
-		}
-		b = b >> 1;
-		//P1OUT |= CLK_OUT;
-		FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, CLK_OUT_PIN);
-		//delayMs(10);
-		//__delay_cycles(100);
-		//P1OUT &= ~CLK_OUT;
-		FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, 0);
-	}
-}
-
-void shift_out_data(const uint16_t b[8], uint8_t shift, uint8_t threshold) {
-	for(int i=0;i<8; i++) {
-		if( ((b[7-i] >> shift) & 0xF) > threshold) {
-			FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, SER_OUT_PIN);
-		} else {
-			FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, 0);
-		}
-		//b = b >> 1;
-		FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, CLK_OUT_PIN);
-		//delayMs(10);
-		FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, 0);
-	}
-}
-
-void shift_out_row(uint8_t row, const uint16_t data[8], uint8_t threshold)
-{
-	shift_out_data(data, 8, current_color == 2 ? threshold : 15);
-	shift_out_data(data, 4, current_color == 1 ? threshold : 15);
-	shift_out_data(data, 0, current_color == 0 ? threshold : 15);
-	shift_out(row);
-	shift_latch();
-
-#if 0
-	shift_out_data(data, 8, 15);
-	shift_out_data(data, 4, threshold);
-	shift_out_data(data, 0, 15);
-	shift_out(row);
-	shift_latch();
-
-	shift_out_data(data, 8, threshold);
-	shift_out_data(data, 4, 15);
-	shift_out_data(data, 0, 15);
-	shift_out(row);
-
-	shift_out(0);
-	shift_out(0);
-	shift_out(0);
-	shift_out(row);
-#endif
-}
-
-
 void timer0_int_handler(void) {
 	long v;
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-
-#if 1
-	shift_out_row(ROW(current_row), fb[current_row], current_intensity);
-	current_color++;
-
-	if( current_color > 2 ) {
-		current_color = 0;
-		current_row++;
-		if( current_row > 7 ) {
-			current_intensity++;
-			current_row = 0;
-
-			if( current_intensity > 14 ) {
-				current_intensity = 0;
-			}
-		}
-	}
-#endif
-#if 0
-	for(int l=0; l<15; l+=1) {
-		for(int i=0; i<8; i++) {
-                  for(current_color=0; current_color<3; current_color++) 
-			shift_out_row(ROW(i), fb[i], l);
-		}
-	}
-#endif
-#if 0
-		counter++;
-		if( counter > 100000) {
-			MAP_IntMasterDisable();
-			counter = 0;
-			for(int i=0; i<8; i++) {
-				for(int l=0; l<7; l++) {
-					fb[i][l] = fb[i][l+1];
-				}
-				fb[i][7] = ((font[msg[next_char]-48][i] >> (8-off)) & 0x1) * COLOR(15, 15, 0); //msg_color[next_char];
-			}
-			MAP_IntMasterEnable();
-			off++;
-			if( off >= 8) {
-				off = 0;
-				next_char++;
-				if( next_char >= msg_len) {
-					next_char = 0;
-				}
-			}
-		}
-#endif
+	displayTick();
 }
 
 void timer0b_int_handler(void) {
@@ -493,33 +329,6 @@ uint8_t spi_send(uint8_t c) {
 uint32_t
 sys_now(void) {
 	return tickCounter;
-}
-
-void set_char(char c, uint16_t color) {
-	msg_mode = MODE_STATIC;
-	for(int i=0; i<8; i++) {
-		for(int l=0; l<8; l++) {
-			fb[i][l] = ((font[c-32][i] >> (7-l)) & 0x1) * color;
-		}
-	}
-}
-
-void set_message(char *buf, uint16_t len) {
-	set_char(' ', 0x00);
-	msg_mode = MODE_SCROLL;
-	memcpy(msg, buf, len);
-	msg_len = len;
-	next_char = 0;
-	off = 0;
-}
-
-void clearDisplay(uint16_t v[8][8]) 
-{
-	for(int i=0; i<8; i++) {
-		for(int l=0; l<8; l++) {
-			v[i][l] = 0x00;
-		}
-	}
 }
 
 void status_callback(const char *name, const char *color)

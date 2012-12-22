@@ -123,6 +123,7 @@ SRC = LM4F_startup.c \
       main.c \
       enc28j60.c \
       jenkins-api-client.c \
+      led_matrix.c \
       parser.c \
       json.c \
       ${STELLARISWARE_PATH}/utils/uartstdio.c \
