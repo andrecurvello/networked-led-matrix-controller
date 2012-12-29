@@ -1,13 +1,15 @@
 #include "led_matrix.h"
 
 #include "font.h"
+#include <string.h>
 
 static void shift_latch(void);
 static void shift_out(uint8_t b);
 static void shift_out_data(const uint16_t b[8], uint8_t shift, uint8_t threshold);
 static void shift_out_row(uint8_t row, const uint16_t data[8], uint8_t threshold);
+static void displayScrollTickCb(void);
 
-volatile uint8_t msg[50];
+volatile char msg[50];
 uint8_t msg_len;
 uint8_t next_char = 0;
 uint8_t off = 0;
@@ -108,8 +110,17 @@ void set_char(char c, uint16_t color) {
 
 void set_message(char *buf, uint16_t len) {
 	set_char(' ', 0x00);
-	displaySetAnim(displayScrollTick, 2);
-	memcpy(msg, buf, len);
+	displaySetAnim(displayScrollTickCb, 2);
+	strncpy((char*)msg, buf, len);
+	msg_len = len;
+	next_char = 0;
+	off = 0;
+}
+
+void displayScrollTickSetMessage(char *buf, uint16_t len)
+{
+	set_char(' ', 0x00);
+	strncpy((char*)msg, buf, len);
 	msg_len = len;
 	next_char = 0;
 	off = 0;
@@ -127,7 +138,7 @@ void clearDisplay(uint16_t v[8][8])
 void inline displayTick(void)
 {
 #if 1
-	shift_out_row(ROW(current_row), fb[current_row], current_intensity);
+	shift_out_row(ROW(current_row), (const uint16_t*)fb[current_row], current_intensity);
 	current_color++;
 
 	if( current_color > 2 ) {
@@ -175,22 +186,32 @@ void inline displayTick(void)
 #endif
 }
 
-void inline displayScrollTick(void)
+void displayScrollTickCb(void)
 {
-			for(int i=0; i<8; i++) {
-				for(int l=0; l<7; l++) {
-					fb[i][l] = fb[i][l+1];
-				}
-				fb[i][7] = ((font[msg[next_char]-32][i] >> (7-off)) & 0x1) * COLOR(0, 15, 0); //msg_color[next_char];
-			}
-			off++;
-			if( off >= 8) {
-				off = 0;
-				next_char++;
-				if( next_char >= msg_len) {
-					next_char = 0;
-				}
-			}
+	displayScrollTick();
+}
+
+bool displayScrollTick(void)
+{
+	bool done = false;
+
+	for(int i=0; i<8; i++) {
+		for(int l=0; l<7; l++) {
+			fb[i][l] = fb[i][l+1];
+		}
+		fb[i][7] = ((font[msg[next_char]-32][i] >> (7-off)) & 0x1) * COLOR(0, 15, 0); //msg_color[next_char];
+	}
+	off++;
+	if( off >= 8) {
+		off = 0;
+		next_char++;
+		if( next_char >= msg_len) {
+			done = true;
+			next_char = 0;
+		}
+	}
+
+	return done;
 }
 
 void
