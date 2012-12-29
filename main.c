@@ -57,6 +57,17 @@ uint16_t index_view[8][8];
 volatile static unsigned long events;
 volatile static unsigned long tickCounter;
 uint8_t curRow, curCol;
+uint8_t error_project_count;
+
+#define MAX_ERROR_PROJECTS 2
+#define MAX_NAME_LEN 30
+
+char error_projects[MAX_ERROR_PROJECTS][MAX_NAME_LEN];
+
+uint8_t index_view_mode;
+
+#define INDEX_VIEW_MODE_INDEX 	0
+#define INDEX_VIEW_MODE_ERRORED	1
 
 #define FLAG_SYSTICK	0
 #define FLAG_UPDATE	1
@@ -67,6 +78,9 @@ uint8_t curRow, curCol;
 
 const uint8_t mac_addr[] = { 0x00, 0xC0, 0x033, 0x50, 0x48, 0x12 };
 
+static uint8_t index_view_counter;
+static uint8_t current_error_project;
+
 int
 main(void) {
 	struct netif netif;
@@ -74,7 +88,6 @@ main(void) {
 	cpu_init();
         uart_init();
         spi_init();
-
 
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
@@ -324,10 +337,13 @@ void status_callback(const char *name, const char *color)
 	if( curRow == 0 && curCol == 0) {
 		//clearDisplay(index_view);
 		memcpy(fb, index_view, 128);
+		error_project_count = 0;
+		index_view_counter = 0;
+		index_view_mode = INDEX_VIEW_MODE_INDEX;
 		displaySetAnim(indexDisplay, 2);
 	}
-	UARTprintf("Project %s has color %s\n", name, color);
-	UARTFlushTx(false);
+	/*UARTprintf("Project %s has color %s\n", name, color);
+	UARTFlushTx(false);*/
 	uint16_t c = 0;
 
 	if( strncmp(color, "blue", 4) == 0) {
@@ -337,9 +353,10 @@ void status_callback(const char *name, const char *color)
 		c = COLOR(15, 15, 0);
 	} else if( strncmp(color, "red", 3) == 0) {
 		c = COLOR(15, 0, 0);
+		strncpy(error_projects[error_project_count], name, MAX_NAME_LEN);
+		error_project_count++;
 	}
 	
-	UARTprintf("fb[%d][%d] = %d\n", curRow, curCol, c);
 
 	index_view[curRow][curCol] = c;
 
@@ -353,5 +370,28 @@ void status_callback(const char *name, const char *color)
 static void
 indexDisplay(void)
 {
-	memcpy(fb, index_view, 128);
+	if( index_view_mode == INDEX_VIEW_MODE_INDEX ) {
+		memcpy(fb, index_view, 128);
+		index_view_counter++;
+		if( index_view_counter > 30 ) {
+			index_view_counter = 0;
+			if( error_project_count > 0 ) {
+				displaySetAnim(indexDisplay, 1);
+				index_view_mode = INDEX_VIEW_MODE_ERRORED;
+				current_error_project = 0;
+				displayScrollTickSetMessage(error_projects[0], strlen(error_projects[0]));
+			}
+		}
+	} else if( index_view_mode == INDEX_VIEW_MODE_ERRORED) {
+		if( displayScrollTick() ) {
+			current_error_project++;
+			if( current_error_project >= error_project_count ) {
+				index_view_mode = INDEX_VIEW_MODE_INDEX;
+				displaySetAnim(indexDisplay, 2);
+			} else {
+				displayScrollTickSetMessage(error_projects[current_error_project], 
+							    strlen(error_projects[current_error_project]));
+			}
+		}
+	}
 }
