@@ -79,24 +79,6 @@ void shift_out_row(uint8_t row, const uint16_t data[8], uint8_t threshold)
 	shift_out_data(data, 0, current_color == 0 ? threshold : 15);
 	shift_out(row);
 	shift_latch();
-
-#if 0
-	shift_out_data(data, 8, 15);
-	shift_out_data(data, 4, threshold);
-	shift_out_data(data, 0, 15);
-	shift_out(row);
-	shift_latch();
-
-	shift_out_data(data, 8, threshold);
-	shift_out_data(data, 4, 15);
-	shift_out_data(data, 0, 15);
-	shift_out(row);
-
-	shift_out(0);
-	shift_out(0);
-	shift_out(0);
-	shift_out(row);
-#endif
 }
 
 void set_char(char c, uint16_t color) {
@@ -137,7 +119,6 @@ void clearDisplay(uint16_t v[8][8])
 
 void inline displayTick(void)
 {
-#if 1
 	shift_out_row(ROW(current_row), (const uint16_t*)fb[current_row], current_intensity);
 	current_color++;
 
@@ -153,37 +134,6 @@ void inline displayTick(void)
 			}
 		}
 	}
-#endif
-#if 0
-	for(int l=0; l<15; l+=1) {
-		for(int i=0; i<8; i++) {
-                  for(current_color=0; current_color<3; current_color++) 
-			shift_out_row(ROW(i), fb[i], l);
-		}
-	}
-#endif
-#if 0
-		counter++;
-		if( counter > 100000) {
-			MAP_IntMasterDisable();
-			counter = 0;
-			for(int i=0; i<8; i++) {
-				for(int l=0; l<7; l++) {
-					fb[i][l] = fb[i][l+1];
-				}
-				fb[i][7] = ((font[msg[next_char]-48][i] >> (8-off)) & 0x1) * COLOR(15, 15, 0); //msg_color[next_char];
-			}
-			MAP_IntMasterEnable();
-			off++;
-			if( off >= 8) {
-				off = 0;
-				next_char++;
-				if( next_char >= msg_len) {
-					next_char = 0;
-				}
-			}
-		}
-#endif
 }
 
 void displayScrollTickCb(void)
