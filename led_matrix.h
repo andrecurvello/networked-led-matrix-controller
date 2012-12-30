@@ -30,8 +30,13 @@
 #define FAST_GPIOPinWrite(ulPort, ucPins, ucVal) HWREG(ulPort + (GPIO_O_DATA + (ucPins << 2))) = ucVal
 #endif
 
-uint8_t msg_mode;
-volatile uint16_t fb[8][8];
+#define LED_MATRIX_ROWS		8
+#define LED_MATRIX_COLS		16
+
+#define FB_SIZE			(LED_MATRIX_ROWS*LED_MATRIX_COLS*2)
+
+extern uint8_t msg_mode;
+extern volatile uint16_t fb[LED_MATRIX_ROWS][LED_MATRIX_COLS];
 
 #define MODE_STATIC	0
 #define MODE_ANIM	1
@@ -39,7 +44,7 @@ volatile uint16_t fb[8][8];
 typedef void (*display_anim_callback_t)(void);
 
 void set_message(char *buf, uint16_t len);
-void clearDisplay(uint16_t v[8][8]);
+void clearDisplay(uint16_t v[LED_MATRIX_ROWS][LED_MATRIX_COLS]);
 void displayTick(void);
 void displayScrollTickSetMessage(char *buf, uint16_t len);
 bool displayScrollTick(void);

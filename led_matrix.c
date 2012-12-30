@@ -3,11 +3,16 @@
 #include "font.h"
 #include <string.h>
 
+uint8_t msg_mode;
+volatile uint16_t fb[LED_MATRIX_ROWS][LED_MATRIX_COLS];
+
 static void shift_latch(void);
 static void shift_out(uint8_t b);
 static void shift_out_data(const uint16_t b[8], uint8_t shift, uint8_t threshold);
-static void shift_out_row(uint8_t row, const uint16_t data[8], uint8_t threshold);
+static void shift_out_row(uint8_t row, const uint16_t data[LED_MATRIX_COLS], uint8_t threshold);
 static void displayScrollTickCb(void);
+
+#define delayMs(ms) (SysCtlDelay(((SysCtlClockGet() / 3) / 1000)*ms))
 
 volatile char msg[50];
 uint8_t msg_len;
@@ -23,7 +28,7 @@ static volatile uint8_t display_counter;
 void displayInit(void) 
 {
 	msg_mode = MODE_STATIC;
-	memset(fb, 0, 128);
+	memset(fb, 0, FB_SIZE);
 	display_interval = 2;
 	display_counter = 0;
 }
@@ -60,7 +65,7 @@ shift_out(uint8_t b) {
 
 void shift_out_data(const uint16_t b[8], uint8_t shift, uint8_t threshold) {
 	for(int i=0;i<8; i++) {
-		if( ((b[7-i] >> shift) & 0xF) > threshold) {
+		if( ((b[8-1-i] >> shift) & 0xF) > threshold) {
 			FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, SER_OUT_PIN);
 		} else {
 			FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, 0);
@@ -72,20 +77,28 @@ void shift_out_data(const uint16_t b[8], uint8_t shift, uint8_t threshold) {
 	}
 }
 
-void shift_out_row(uint8_t row, const uint16_t data[8], uint8_t threshold)
+void shift_out_row(uint8_t row, const uint16_t data[LED_MATRIX_COLS], uint8_t threshold)
 {
-	shift_out_data(data, 8, current_color == 2 ? threshold : 15);
+	// Shift out left-most display first
+	//shift_out_data(data, 8, current_color == 2 ? threshold : 15);
 	shift_out_data(data, 4, current_color == 1 ? threshold : 15);
 	shift_out_data(data, 0, current_color == 0 ? threshold : 15);
+
+	// Shift out right-most display next
+	//shift_out_data(data, 8, current_color == 2 ? threshold : 15);
+	shift_out_data(data + 8, 4, current_color == 1 ? threshold : 15);
+	shift_out_data(data + 8, 0, current_color == 0 ? threshold : 15);
+
 	shift_out(row);
+
 	shift_latch();
 }
 
 void set_char(char c, uint16_t color) {
 	msg_mode = MODE_STATIC;
-	for(int i=0; i<8; i++) {
-		for(int l=0; l<8; l++) {
-			fb[i][l] = ((font[c-32][i] >> (7-l)) & 0x1) * color;
+	for(int i=0; i<LED_MATRIX_ROWS; i++) {
+		for(int l=0; l<LED_MATRIX_COLS; l++) {
+			fb[i][l] = ((font[c-32][i] >> (LED_MATRIX_COLS-1-l)) & 0x1) * color;
 		}
 	}
 }
@@ -108,10 +121,10 @@ void displayScrollTickSetMessage(char *buf, uint16_t len)
 	off = 0;
 }
 
-void clearDisplay(uint16_t v[8][8]) 
+void clearDisplay(uint16_t v[LED_MATRIX_ROWS][LED_MATRIX_COLS]) 
 {
-	for(int i=0; i<8; i++) {
-		for(int l=0; l<8; l++) {
+	for(int i=0; i<LED_MATRIX_ROWS; i++) {
+		for(int l=0; l<LED_MATRIX_COLS; l++) {
 			v[i][l] = 0x00;
 		}
 	}
@@ -122,14 +135,14 @@ void inline displayTick(void)
 	shift_out_row(ROW(current_row), (const uint16_t*)fb[current_row], current_intensity);
 	current_color++;
 
-	if( current_color > 2 ) {
+	if( current_color > 1) {
 		current_color = 0;
 		current_row++;
-		if( current_row > 7 ) {
+		if( current_row >= LED_MATRIX_ROWS ) {
 			current_intensity++;
 			current_row = 0;
 
-			if( current_intensity > 14 ) {
+			if( current_intensity > 15 ) {
 				current_intensity = 0;
 			}
 		}
@@ -145,11 +158,11 @@ bool displayScrollTick(void)
 {
 	bool done = false;
 
-	for(int i=0; i<8; i++) {
-		for(int l=0; l<7; l++) {
+	for(int i=0; i<LED_MATRIX_ROWS; i++) {
+		for(int l=0; l<LED_MATRIX_COLS-1; l++) {
 			fb[i][l] = fb[i][l+1];
 		}
-		fb[i][7] = ((font[msg[next_char]-32][i] >> (7-off)) & 0x1) * COLOR(0, 15, 0); //msg_color[next_char];
+		fb[i][LED_MATRIX_COLS-1] = ((font[msg[next_char]-32][i] >> (7-off)) & 0x1) * COLOR(0, 15, 0); //msg_color[next_char];
 	}
 	off++;
 	if( off >= 8) {

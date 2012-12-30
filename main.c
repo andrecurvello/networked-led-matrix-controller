@@ -53,7 +53,7 @@ const uint16_t static_data[8][8] = {
 		{0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00},
 		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
 };
-uint16_t index_view[8][8];
+uint16_t index_view[LED_MATRIX_ROWS][LED_MATRIX_COLS];
 volatile static unsigned long events;
 volatile static unsigned long tickCounter;
 uint8_t curRow, curCol;
@@ -115,7 +115,7 @@ main(void) {
 	MAP_TimerConfigure(TIMER0_BASE, TIMER_CFG_A_PERIODIC | TIMER_CFG_B_PERIODIC | TIMER_CFG_SPLIT_PAIR);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, ROM_SysCtlClockGet()/20000);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
-	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 100);
+	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 150);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);
@@ -336,7 +336,7 @@ void status_callback(const char *name, const char *color)
 {
 	if( curRow == 0 && curCol == 0) {
 		//clearDisplay(index_view);
-		memcpy(fb, index_view, 128);
+		memcpy(fb, index_view, FB_SIZE);
 		error_project_count = 0;
 		index_view_counter = 0;
 		index_view_mode = INDEX_VIEW_MODE_INDEX;
@@ -361,7 +361,7 @@ void status_callback(const char *name, const char *color)
 	index_view[curRow][curCol] = c;
 
 	curCol++;
-	if( curCol >= 8 ) {
+	if( curCol >= LED_MATRIX_COLS ) {
 		curCol = 0;
 		curRow = (curRow+1) % 7;
 	}
@@ -371,7 +371,7 @@ static void
 indexDisplay(void)
 {
 	if( index_view_mode == INDEX_VIEW_MODE_INDEX ) {
-		memcpy(fb, index_view, 128);
+		memcpy(fb, index_view, FB_SIZE);
 		index_view_counter++;
 		if( index_view_counter > 30 ) {
 			index_view_counter = 0;
