@@ -62,8 +62,8 @@ extern unsigned long _stack_top;
 extern unsigned long _start_text;
 extern unsigned long _end_text;
 // .data (data to be copied on ram)
-extern unsigned long _start_data;
-extern unsigned long _end_data;
+extern unsigned long __data_start;
+extern unsigned long __data_end;
 // .bss (uninitialized data to set to 0);
 extern unsigned long _start_bss;
 extern unsigned long _end_bss;
@@ -258,10 +258,10 @@ void rst_handler(void){
 	
 	//this should be good!
 	src = &_end_text;
-	dest = &_start_data;
+	dest = &__data_start;
 	
 	//this too
-    while(dest < &_end_data)
+    while(dest < &__data_end)
     {
         *dest++ = *src++;
     }
@@ -271,11 +271,15 @@ void rst_handler(void){
 	while(dest < &_end_bss){
 		*dest++ = 0;
 	}
+
+	__libc_init_array();
 	
 	// after setting copying .data to ram and "zero-ing" .bss we are good
 	// to start the main() method!
 	// There you go!
 	main();
+
+	__libc_fini_array();
 }
 
 // NMI Exception handler code NVIC 2
