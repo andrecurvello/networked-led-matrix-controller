@@ -1,3 +1,6 @@
 [submodule "lwip"]
 	path = lwip
 	url = git://git.savannah.nongnu.org/lwip.git
+[submodule "led-matrix-lib"]
+	path = led-matrix-lib
+	url = ssh://paul@home.xpg.dk:2222/share/git/led-matrix-lib.git
