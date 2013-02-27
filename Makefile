@@ -48,6 +48,7 @@ DIR_LWIP=$(PWD)/lwip/src
 
 # Program name definition for ARM GNU C compiler.
 CC      = ${PREFIX_ARM}-gcc
+CXX	= ${PREFIX_ARM}-g++
 # Program name definition for ARM GNU Linker.
 LD      = ${PREFIX_ARM}-ld
 # Program name definition for ARM GNU Object copy.
@@ -60,6 +61,8 @@ CFLAGS=-mthumb ${CPU} ${FPU} -Os -ffunction-sections -fdata-sections -MD -std=gn
 # Library stuff passed as flags!
 CFLAGS+= -I ${STELLARISWARE_PATH} -DPART_$(PART) -c -DTARGET_IS_BLIZZARD_RA1
 CFLAGS+= -I$(DIR_LWIP)/include -I$(DIR_LWIP)/include/ipv4 -I$(DIR_LWIP)/include/ipv6 -I.
+
+CXXFLAGS = $(CFLAGS) -fno-rtti -fno-exceptions
 
 # Flags for LD
 LFLAGS  = --gc-sections
@@ -121,15 +124,17 @@ SRC_LWIP=$(DIR_LWIP)/core/raw.c \
 
 SRC = LM4F_startup.c \
       main.c \
+      dummyfuncs.c \
       enc28j60.c \
       jenkins-api-client.c \
-      led_matrix.c \
       parser.c \
       json.c \
+      $(wildcard led-matrix-lib/*.cpp) \
       ${STELLARISWARE_PATH}/utils/uartstdio.c \
-	${SRC_LWIP}
+      ${SRC_LWIP}
 
-OBJS = $(SRC:.c=.o)
+OBJS = $(subst .c,.o,$(subst .cpp,.o,$(SRC))) 
+$(warning $(OBJS))
 
 #==============================================================================
 #                      Rules to make the target
@@ -143,13 +148,19 @@ all: $(OBJS) ${PROJECT_NAME}.axf ${PROJECT_NAME}
 	@echo Compiling $<...
 	$(CC) -c $(CFLAGS) ${<} -o ${@}
 
+%.o: %.cpp
+	@echo
+	@echo Compiling $<...
+	$(CXX) -c $(CXXFLAGS) ${<} -o ${@}
+
 ${PROJECT_NAME}.axf: $(OBJS)
 	@echo
 	@echo Making driverlib
 	$(MAKE) -C ${STELLARISWARE_PATH}driverlib/
 	@echo
 	@echo Linking...
-	$(LD) -T $(LINKER_FILE) $(LFLAGS) -o ${PROJECT_NAME}.axf $(OBJS) ${STELLARISWARE_PATH}driverlib/gcc-cm4f/libdriver-cm4f.a $(LIBM_PATH) $(LIBC_PATH) $(LIB_GCC_PATH)
+	$(CXX) -nodefaultlibs -mcpu=cortex-m4 -mthumb -T $(LINKER_FILE) $(LFLAGS) -o ${PROJECT_NAME}.axf $(OBJS) ${STELLARISWARE_PATH}driverlib/gcc-cm4f/libdriver-cm4f.a -lc -lgcc
+#$(LIBM_PATH) $(LIBC_PATH) $(LIB_GCC_PATH)
 
 ${PROJECT_NAME}: ${PROJECT_NAME}.axf
 	@echo

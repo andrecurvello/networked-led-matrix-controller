@@ -2,7 +2,6 @@
 #include "vartext.h"
 #include <stdbool.h>
 
-#include "font.h"
 #include "json.h"
 
 #define RED_SHIFT               0
@@ -119,7 +118,7 @@ jenkins_get_status(ip_addr_t addr, const char *hostname, jac_status_callback_t c
 	int ret;
 	if( ( ret = tcp_connect(pcb, &addr, 8080, jac_connected) ) != ERR_OK ) {
 		UARTprintf("Could not connect (%d)\n", ret);
-		set_message("UNABLE TO CONNECT  ", 19);
+		//set_message("UNABLE TO CONNECT  ", 19);
 		tcp_close(pcb);
 		mem_free(state);
 	}
@@ -129,7 +128,7 @@ static void
 jac_error(void *arg, err_t err) 
 {
 	UARTprintf("Error: %d\n", err);
-	set_message("ERROR ", 6);
+	//set_message("ERROR ", 6);
 	if( arg != NULL ) {
 		mem_free(arg);
 	}

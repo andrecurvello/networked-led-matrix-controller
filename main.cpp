@@ -25,25 +25,50 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "font.h"
+#include "led-matrix-lib/LedMatrix.hpp"
+#include "led-matrix-lib/LedMatrixSimpleFont.hpp"
+#include "led-matrix-lib/TestAnimation.hpp"
+#include "IndexDisplay.hpp"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include "enc28j60.h"
 #include "jenkins-api-client.h"
-#include "led_matrix.h"
+#include "led_matrix_config.h"
+#ifdef __cplusplus
+}
+#endif
 
 #define delayMs(ms) (SysCtlDelay(((SysCtlClockGet() / 3) / 1000)*ms))
 
 static inline void cpu_init(void);
 static inline void uart_init(void);
 static inline void spi_init(void);
-void timer0_int_handler(void);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 void SysTickIntHandler(void);
+void timer0_int_handler(void);
+#ifdef __cplusplus
+}
+#endif
 
 static void enc28j60_comm_init(void);
+#ifdef __cplusplus
+extern "C" {
+#endif
 static void status_callback(const char *name, const char *color);
+#ifdef __cplusplus
+}
+#endif
 
+#if 0
 static void indexDisplay(void);
+#endif
 
-const uint16_t static_data[8][8] = {
+/*const uint16_t static_data[8][8] = {
 		{0xFF, 0xF0, 0xFF, 0x0F, 0xFF, 0x00, 0xFF, 0x00},
 		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
 		{0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00},
@@ -52,17 +77,20 @@ const uint16_t static_data[8][8] = {
 		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
 		{0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00},
 		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
-};
-uint16_t index_view[LED_MATRIX_ROWS][LED_MATRIX_COLS];
+};*/
+//uint16_t index_view[LED_MATRIX_ROWS][LED_MATRIX_COLS];
 volatile static unsigned long events;
 volatile static unsigned long tickCounter;
-uint8_t curRow, curCol;
+//uint8_t curRow, curCol;
+
+#define MAX_ERROR_PROJECTS 	2
+#define MAX_PROJECTS		30
+#define MAX_NAME_LEN 		30
+
 uint8_t error_project_count;
-
-#define MAX_ERROR_PROJECTS 2
-#define MAX_NAME_LEN 30
-
 char error_projects[MAX_ERROR_PROJECTS][MAX_NAME_LEN];
+uint8_t project_status[MAX_PROJECTS];
+uint8_t next_project;
 
 uint8_t index_view_mode;
 
@@ -76,10 +104,24 @@ uint8_t index_view_mode;
 #define TICK_MS                 250
 #define SYSTICKHZ               (1000/TICK_MS)
 
-const uint8_t mac_addr[] = { 0x00, 0xC0, 0x033, 0x50, 0x48, 0x12 };
+#ifdef __cplusplus
+extern "C" {
+#endif
+uint8_t mac_addr[] = { 0x00, 0xC0, 0x033, 0x50, 0x48, 0x12 };
+#ifdef __cplusplus
+}
+#endif
 
 static uint8_t index_view_counter;
 static uint8_t current_error_project;
+
+LedMatrixFrameBuffer<16,16>	frameBuffer;
+LedMatrixSimpleFont		defaultFont;
+LedMatrix			matrix(frameBuffer, defaultFont);
+
+LedMatrixScrollAnimation	scrollAnimation(defaultFont);
+LedMatrixTestAnimation		testAnimation(matrix, scrollAnimation);
+IndexDisplay			indexDisplay(defaultFont);
 
 int
 main(void) {
@@ -89,10 +131,14 @@ main(void) {
         uart_init();
         spi_init();
 
+        UARTprintf("Startup\n");
+
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
-	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
+	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
+	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 
@@ -102,9 +148,13 @@ main(void) {
 	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_3);
 
         // Setup Display pins
-	MAP_GPIOPinTypeGPIOOutput(LATCH_PORT, LATCH_PIN);
-	MAP_GPIOPinTypeGPIOOutput(SER_OUT_PORT, SER_OUT_PIN);
-	MAP_GPIOPinTypeGPIOOutput(CLK_OUT_PORT, CLK_OUT_PIN);
+	MAP_GPIOPinTypeGPIOOutput(LATCH_PORT, 		LATCH_PIN);
+	MAP_GPIOPinTypeGPIOOutput(SER_OUT_PORT, 	SER_OUT_PIN);
+	MAP_GPIOPinTypeGPIOOutput(CLK_OUT_PORT, 	CLK_OUT_PIN);
+	MAP_GPIOPinTypeGPIOOutput(ROW_SER_OUT_PORT, 	ROW_SER_OUT_PIN);
+	MAP_GPIOPinTypeGPIOOutput(ROW_CLK_OUT_PORT, 	ROW_CLK_OUT_PIN);
+	MAP_GPIOPinTypeGPIOOutput(ROW_LATCH_PORT, 	ROW_LATCH_PIN);
+	MAP_GPIOPinTypeGPIOOutput(ROW_ENABLE_PORT, 	ROW_ENABLE_PIN);
 
 	// Setup SysTick timer
 	MAP_SysTickPeriodSet(MAP_SysCtlClockGet() / SYSTICKHZ);
@@ -113,9 +163,9 @@ main(void) {
 
 	// Configure timer 
 	MAP_TimerConfigure(TIMER0_BASE, TIMER_CFG_A_PERIODIC | TIMER_CFG_B_PERIODIC | TIMER_CFG_SPLIT_PAIR);
-	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, ROM_SysCtlClockGet()/20000);
+	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 2000);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
-	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 150);
+	//MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 150);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);
@@ -135,9 +185,22 @@ main(void) {
 	FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, 0);
 	FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, 0);
 
-	displayInit();
-	set_message("LOADING  ", 9);
+	FAST_GPIOPinWrite(ROW_ENABLE_PORT, ROW_ENABLE_PIN, ROW_ENABLE_PIN);
+
+	//displayInit();
+	//set_message("LOADING  ", 9);
+
+	frameBuffer.init();
+
+	LedMatrixColor color(5, 0x3F, 0x00);
+	matrix.clear(color);
+
+	char *msg = "#003FHello #3F00World ";
+
+	scrollAnimation.setMessage(msg, strlen(msg));
+	matrix.setAnimation(&testAnimation, 2);
 	
+#if 1
 	enc28j60_comm_init();
 	enc_init(mac_addr);
 
@@ -153,6 +216,7 @@ main(void) {
 	netif_add(&netif, &ipaddr, &netmask, &gw, NULL, enc28j60_init, ethernet_input);
 	netif_set_default(&netif);
 	dhcp_start(&netif);
+#endif
 
 #if 0
 	for(int i=0; i<8; i++) {
@@ -170,6 +234,7 @@ main(void) {
 #endif
 
         UARTprintf("Welcome\n");
+
 
 	//memcpy(fb, static_data, 128);
 
@@ -191,9 +256,10 @@ main(void) {
 			memcpy(fb, index_view, 128);
 		} else 
 #endif
+#if 1
 		if(HWREGBITW(&events, FLAG_UPDATE) == 1) {
 			HWREGBITW(&events, FLAG_UPDATE) = 0;
-			displayAnimTick();
+			//displayAnimTick();
 		}
 		if(HWREGBITW(&events, FLAG_SYSTICK) == 1) {
 			HWREGBITW(&events, FLAG_SYSTICK) = 0;
@@ -217,20 +283,24 @@ main(void) {
 				last_dhcp_fine_time = tickCounter;
 			}
 
+#if 1
 			if( (tickCounter - last_status_time) * TICK_MS >= 20000) {
 				ip_addr_t addr;
 				IP4_ADDR(&addr, 10, 0, 0, 239);
 				jenkins_get_status(addr, "10.0.0.239", &status_callback);
-				curRow = curCol = 0;
+				//curRow = curCol = 0;
+				next_project = 0;
 				last_status_time = tickCounter;
 				status_done = true;
 			}
+#endif
 		}
 		
 		if( HWREGBITW(&events, FLAG_ENC_INT) == 1 ) {
 			HWREGBITW(&events, FLAG_ENC_INT) = 0;
 			enc_action(&netif);
 		}
+#endif
 	}
 }
 
@@ -272,25 +342,36 @@ spi_init(void) {
   while(MAP_SSIDataGetNonBlocking(SSI2_BASE, &b)) {}
 }
 
+
+
+volatile static unsigned long oldTickCounter;
+#ifdef __cplusplus
+extern "C" {
+#endif
 void timer0_int_handler(void) {
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-	displayTick();
+	//displayTick();
+	//if( tickCounter > oldTickCounter + 2) {
+		matrix.update();
+		//oldTickCounter = tickCounter;
+	//}
 }
 
 void timer0b_int_handler(void) {
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMB_TIMEOUT);
 
-	if( displayCheckUpdate() ) {
+	/*if( displayCheckUpdate() ) {
 		HWREGBITW(&events, FLAG_UPDATE) = 1;
-	}
-/*	v = MAP_GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_3);
-	FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, v ^ GPIO_PIN_3);*/
+	}*/
 }
 
 void SysTickIntHandler(void) {
 	tickCounter++;
 	HWREGBITW(&events, FLAG_SYSTICK) = 1;
 }
+#ifdef __cplusplus
+}
+#endif
 
 static void
 enc28j60_comm_init(void) {
@@ -312,6 +393,9 @@ enc28j60_comm_init(void) {
 	MAP_GPIOPinIntEnable(GPIO_PORTE_BASE, ENC_INT);
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 void GPIOPortEIntHandler(void) {
 	uint8_t p = MAP_GPIOPinIntStatus(GPIO_PORTE_BASE, true) & 0xFF;
 
@@ -327,37 +411,46 @@ uint8_t spi_send(uint8_t c) {
 	return (uint8_t)val;
 }
 
+
 uint32_t
 sys_now(void) {
 	return tickCounter;
 }
 
+#if 1
 void status_callback(const char *name, const char *color)
 {
-	if( curRow == 0 && curCol == 0) {
+#if 1
+	if( next_project == 0) {
 		//clearDisplay(index_view);
-		memcpy(fb, index_view, FB_SIZE);
+		//memcpy(fb, index_view, FB_SIZE);
 		error_project_count = 0;
-		index_view_counter = 0;
+		matrix.setAnimation(&indexDisplay, 5);
+		/*index_view_counter = 0;
 		index_view_mode = INDEX_VIEW_MODE_INDEX;
-		displaySetAnim(indexDisplay, 2);
+		displaySetAnim(indexDisplay, 2);*/
 	}
-	/*UARTprintf("Project %s has color %s\n", name, color);
-	UARTFlushTx(false);*/
-	uint16_t c = 0;
+#endif
+	//UARTprintf("Project %s has color %s\n", name, color);
+	//UARTFlushTx(false);
+	uint8_t s = 0;
 
 	if( strncmp(color, "blue", 4) == 0) {
-		c = COLOR(0, 15, 0);
+		//c = COLOR(0, 15, 0);
+		s = 1;
 	} else if( strncmp(color, "disabled", 8) == 0) {
 		return;
-		c = COLOR(15, 15, 0);
-	} else if( strncmp(color, "red", 3) == 0) {
-		c = COLOR(15, 0, 0);
+		//c = COLOR(15, 15, 0);
+	} if( strncmp(color, "red", 3) == 0 || next_project == 4) {
+		//c = COLOR(15, 0, 0);
+		s = 0;
 		strncpy(error_projects[error_project_count], name, MAX_NAME_LEN);
 		error_project_count++;
 	}
 	
-
+	project_status[next_project] = s;
+	next_project++;
+#if 0
 	index_view[curRow][curCol] = c;
 
 	curCol++;
@@ -365,8 +458,14 @@ void status_callback(const char *name, const char *color)
 		curCol = 0;
 		curRow = (curRow+1) % 7;
 	}
+#endif
 }
+#endif
+#ifdef __cplusplus
+}
+#endif
 
+#if 0
 static void
 indexDisplay(void)
 {
@@ -395,3 +494,4 @@ indexDisplay(void)
 		}
 	}
 }
+#endif
