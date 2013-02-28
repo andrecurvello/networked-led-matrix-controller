@@ -436,8 +436,11 @@ void status_callback(const char *name, const char *color)
 	uint8_t s = 0;
 
 	if( strncmp(color, "blue", 4) == 0) {
-		//c = COLOR(0, 15, 0);
-		s = 1;
+		if( strncmp(color+4, "_anime", 6) == 0 ) {
+			s = 2;
+		} else {
+			s = 1;
+		}
 	} else if( strncmp(color, "disabled", 8) == 0) {
 		return;
 		//c = COLOR(15, 15, 0);

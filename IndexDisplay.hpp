@@ -33,6 +33,11 @@ public:
 					LedMatrixColor color(0x3f, 0x00, 0x00);
 					if( project_status[i] == 1) {
 						color = LedMatrixColor(0x00, 0x3f, 0x00);
+					} else if( project_status[i] == 2) {
+						if( flashOn )
+							color = LedMatrixColor(0x00, 0x3f);
+						else
+							color = LedMatrixColor(0x00, 0x00);
 					}
 
 					fb[fillY][fillX] = color.getValue();
@@ -42,6 +47,7 @@ public:
 						fillX=0;
 					}
 				}
+				flashOn = !flashOn;
 				if( counter > 20 && error_project_count > 0 ) {
 					counter = 0;
 					messageAnim.setMessage(error_projects[counter]);
@@ -68,6 +74,7 @@ public:
 		counter = 0;
 		fillX = fillY = 0;
 		mode = INDEX;
+		flashOn = true;
 	}
 
 
@@ -78,6 +85,7 @@ private:
 	Mode		   	mode;
 	int		   	counter;
 	int			fillX, fillY;
+	bool			flashOn;
 };
 
 #endif
