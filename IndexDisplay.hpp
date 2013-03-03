@@ -26,18 +26,23 @@ public:
 		bool done = false;
 		switch(mode) {
 			case INDEX:
-				counter++;
+				//counter++;
 				fillX = fillY = 0;
-				fb.clear();
+				//fb.clear();
 				for(int i=0;i<next_project;i++) {
 					LedMatrixColor color(0x3f, 0x00, 0x00);
 					if( project_status[i] == 1) {
 						color = LedMatrixColor(0x00, 0x3f, 0x00);
 					} else if( project_status[i] == 2) {
 						if( flashOn )
-							color = LedMatrixColor(0x00, 0x3f);
+							color = LedMatrixColor(0x00, 0x3f, 0x00);
 						else
-							color = LedMatrixColor(0x00, 0x00);
+							color = LedMatrixColor(0x00, 0x00, 0x00);
+					} else if( project_status[i] == 3) {
+						if( flashOn )
+							color = LedMatrixColor(0x3f, 0x00, 0x00);
+						else
+							color = LedMatrixColor(0x00, 0x00, 0x00);
 					}
 
 					fb[fillY][fillX] = color.getValue();
@@ -48,11 +53,26 @@ public:
 					}
 				}
 				flashOn = !flashOn;
-				if( counter > 20 && error_project_count > 0 ) {
+				/*if( counter > 20 && error_project_count > 0 ) {
 					counter = 0;
 					messageAnim.setMessage(error_projects[counter]);
 					fb.clear();
 					mode = ERROR_NAMES;
+				}*/
+				if( error_project_count > 0 ) {
+					if( counter == -1 ) {
+						messageAnim.setMessage(error_projects[0]);
+						counter=0;
+					}
+					if( messageAnim.update(fb) ) {
+						counter++;
+						if( counter >= error_project_count ) {
+							counter = 0;
+							//mode = INDEX;
+						} else {
+							messageAnim.setMessage(error_projects[counter]);
+						}
+					}
 				}
 			break;
 			case ERROR_NAMES:
@@ -71,7 +91,7 @@ public:
 	}
 
 	void reset() {
-		counter = 0;
+		counter = -1;
 		fillX = fillY = 0;
 		mode = INDEX;
 		flashOn = true;

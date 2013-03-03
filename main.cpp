@@ -28,6 +28,7 @@
 #include "led-matrix-lib/LedMatrix.hpp"
 #include "led-matrix-lib/LedMatrixSimpleFont.hpp"
 #include "led-matrix-lib/TestAnimation.hpp"
+#include "led-matrix-lib/PulseAnimation.hpp"
 #include "IndexDisplay.hpp"
 
 #ifdef __cplusplus
@@ -122,6 +123,7 @@ LedMatrix			matrix(frameBuffer, defaultFont);
 LedMatrixScrollAnimation	scrollAnimation(defaultFont);
 LedMatrixTestAnimation		testAnimation(matrix, scrollAnimation);
 IndexDisplay			indexDisplay(defaultFont);
+PulseAnimation			pulseAnimation;
 
 int
 main(void) {
@@ -163,9 +165,10 @@ main(void) {
 
 	// Configure timer 
 	MAP_TimerConfigure(TIMER0_BASE, TIMER_CFG_A_PERIODIC | TIMER_CFG_B_PERIODIC | TIMER_CFG_SPLIT_PAIR);
-	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 2000);
+	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1200);
+	//MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 5000);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
-	//MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_B, 150);
+	//MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 8000);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);
@@ -185,20 +188,21 @@ main(void) {
 	FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, 0);
 	FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, 0);
 
-	FAST_GPIOPinWrite(ROW_ENABLE_PORT, ROW_ENABLE_PIN, ROW_ENABLE_PIN);
+	//FAST_GPIOPinWrite(ROW_ENABLE_PORT, ROW_ENABLE_PIN, ROW_ENABLE_PIN);
+	FAST_GPIOPinWrite(ROW_ENABLE_PORT, ROW_ENABLE_PIN, 0);
 
 	//displayInit();
 	//set_message("LOADING  ", 9);
 
 	frameBuffer.init();
 
-	LedMatrixColor color(5, 0x3F, 0x00);
-	matrix.clear(color);
+	LedMatrixColor color(20, 32, 0x00);
+	matrix.clear();
 
-	char *msg = "#003FHello #3F00World ";
+	char *msg = "#0020Hello #2000World ";
 
 	scrollAnimation.setMessage(msg, strlen(msg));
-	matrix.setAnimation(&testAnimation, 2);
+	matrix.setAnimation(&scrollAnimation, 20);
 	
 #if 1
 	enc28j60_comm_init();
@@ -260,6 +264,7 @@ main(void) {
 		if(HWREGBITW(&events, FLAG_UPDATE) == 1) {
 			HWREGBITW(&events, FLAG_UPDATE) = 0;
 			//displayAnimTick();
+			matrix.update();
 		}
 		if(HWREGBITW(&events, FLAG_SYSTICK) == 1) {
 			HWREGBITW(&events, FLAG_SYSTICK) = 0;
@@ -286,6 +291,8 @@ main(void) {
 #if 1
 			if( (tickCounter - last_status_time) * TICK_MS >= 20000) {
 				ip_addr_t addr;
+				//IP4_ADDR(&addr, 192, 168, 1, 226);
+				//jenkins_get_status(addr, "192.168.1.226", &status_callback);
 				IP4_ADDR(&addr, 10, 0, 0, 239);
 				jenkins_get_status(addr, "10.0.0.239", &status_callback);
 				//curRow = curCol = 0;
@@ -350,9 +357,10 @@ extern "C" {
 #endif
 void timer0_int_handler(void) {
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
+	matrix.update();
+	//HWREGBITW(&events, FLAG_UPDATE) = 1;
 	//displayTick();
 	//if( tickCounter > oldTickCounter + 2) {
-		matrix.update();
 		//oldTickCounter = tickCounter;
 	//}
 }
@@ -425,7 +433,9 @@ void status_callback(const char *name, const char *color)
 		//clearDisplay(index_view);
 		//memcpy(fb, index_view, FB_SIZE);
 		error_project_count = 0;
-		matrix.setAnimation(&indexDisplay, 5);
+		matrix.clear();
+		matrix.setAnimation(&indexDisplay, 3);
+		indexDisplay.reset();
 		/*index_view_counter = 0;
 		index_view_mode = INDEX_VIEW_MODE_INDEX;
 		displaySetAnim(indexDisplay, 2);*/
@@ -446,7 +456,11 @@ void status_callback(const char *name, const char *color)
 		//c = COLOR(15, 15, 0);
 	} if( strncmp(color, "red", 3) == 0 || next_project == 4) {
 		//c = COLOR(15, 0, 0);
-		s = 0;
+		if( strncmp(color+3, "_anime", 6) == 0 ) {
+			s = 3;
+		} else {
+			s = 0;
+		}
 		strncpy(error_projects[error_project_count], name, MAX_NAME_LEN);
 		error_project_count++;
 	}
