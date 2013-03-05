@@ -116,7 +116,7 @@ uint8_t mac_addr[] = { 0x00, 0xC0, 0x033, 0x50, 0x48, 0x12 };
 static uint8_t index_view_counter;
 static uint8_t current_error_project;
 
-LedMatrixFrameBuffer<16,16>	frameBuffer;
+LedMatrixFrameBuffer<16,16,32>	frameBuffer;
 LedMatrixSimpleFont		defaultFont;
 LedMatrix			matrix(frameBuffer, defaultFont);
 
@@ -202,7 +202,7 @@ main(void) {
 	char *msg = "#0020Hello #2000World ";
 
 	scrollAnimation.setMessage(msg, strlen(msg));
-	matrix.setAnimation(&scrollAnimation, 20);
+	//matrix.setAnimation(&scrollAnimation, 10);
 	
 #if 1
 	enc28j60_comm_init();
@@ -291,10 +291,11 @@ main(void) {
 #if 1
 			if( (tickCounter - last_status_time) * TICK_MS >= 20000) {
 				ip_addr_t addr;
-				//IP4_ADDR(&addr, 192, 168, 1, 226);
-				//jenkins_get_status(addr, "192.168.1.226", &status_callback);
-				IP4_ADDR(&addr, 10, 0, 0, 239);
-				jenkins_get_status(addr, "10.0.0.239", &status_callback);
+				UARTprintf("Reload status\r\n");
+				IP4_ADDR(&addr, 192, 168, 1, 226);
+				jenkins_get_status(addr, "192.168.1.226", &status_callback);
+				//IP4_ADDR(&addr, 10, 0, 0, 239);
+				//jenkins_get_status(addr, "10.0.0.239", &status_callback);
 				//curRow = curCol = 0;
 				next_project = 0;
 				last_status_time = tickCounter;
@@ -430,12 +431,13 @@ void status_callback(const char *name, const char *color)
 {
 #if 1
 	if( next_project == 0) {
+		UARTprintf("Update view\r\n");
 		//clearDisplay(index_view);
 		//memcpy(fb, index_view, FB_SIZE);
 		error_project_count = 0;
-		matrix.clear();
-		matrix.setAnimation(&indexDisplay, 3);
-		indexDisplay.reset();
+		//matrix.clear();
+		matrix.setAnimation(&indexDisplay, 4);
+		//indexDisplay.reset();
 		/*index_view_counter = 0;
 		index_view_mode = INDEX_VIEW_MODE_INDEX;
 		displaySetAnim(indexDisplay, 2);*/
@@ -454,7 +456,7 @@ void status_callback(const char *name, const char *color)
 	} else if( strncmp(color, "disabled", 8) == 0) {
 		return;
 		//c = COLOR(15, 15, 0);
-	} if( strncmp(color, "red", 3) == 0 || next_project == 4) {
+	} else if( strncmp(color, "red", 3) == 0) {
 		//c = COLOR(15, 0, 0);
 		if( strncmp(color+3, "_anime", 6) == 0 ) {
 			s = 3;
@@ -467,6 +469,7 @@ void status_callback(const char *name, const char *color)
 	
 	project_status[next_project] = s;
 	next_project++;
+	UARTFlushTx(false);
 #if 0
 	index_view[curRow][curCol] = c;
 
