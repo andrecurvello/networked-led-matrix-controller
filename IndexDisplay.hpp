@@ -24,68 +24,47 @@ public:
 
 	bool update(AbstractLedMatrixFrameBuffer &fb) {
 		bool done = false;
-		switch(mode) {
-			case INDEX:
-				//counter++;
-				fillX = fillY = 0;
-				//fb.clear();
-				for(int i=0;i<next_project;i++) {
-					LedMatrixColor color(0x3f, 0x00, 0x00);
-					if( project_status[i] == 1) {
-						color = LedMatrixColor(0x00, 0x3f, 0x00);
-					} else if( project_status[i] == 2) {
-						if( flashOn )
-							color = LedMatrixColor(0x00, 0x3f, 0x00);
-						else
-							color = LedMatrixColor(0x00, 0x00, 0x00);
-					} else if( project_status[i] == 3) {
-						if( flashOn )
-							color = LedMatrixColor(0x3f, 0x00, 0x00);
-						else
-							color = LedMatrixColor(0x00, 0x00, 0x00);
-					}
+		fillX = fillY = 0;
+		for(int i=0;i<next_project;i++) {
+			LedMatrixColor color(32, 0x00, 0x00);
+			if( project_status[i] == 1) {
+				color = LedMatrixColor(0x00, 32, 0x00);
+			} else if( project_status[i] == 2) {
+				color = LedMatrixColor(0x00, fadeLevel, 0x00);
+			} else if( project_status[i] == 3) {
+				color = LedMatrixColor(fadeLevel, 0x00, 0x00);
+			}
 
-					fb[fillY][fillX] = color.getValue();
-					fillX++;
-					if( fillX > fb.getColCount() ) {
-						fillY++;
-						fillX=0;
-					}
-				}
-				flashOn = !flashOn;
-				/*if( counter > 20 && error_project_count > 0 ) {
-					counter = 0;
+			fb[fillY][fillX] = color.getValue();
+			fillX++;
+			if( fillX > fb.getColCount() ) {
+				fillY++;
+				fillX=0;
+			}
+		}
+		fadeLevel += fadeInc;
+		if( fadeLevel > 32 ) {
+			fadeInc = -fadeInc;
+		}
+		if( fadeLevel > 64 ) {
+			fadeLevel = 0;
+		}
+
+		messageTick++;
+		if( error_project_count > 0 && messageTick > 1) {
+			messageTick = 0;
+			if( counter == -1 ) {
+				messageAnim.setMessage(error_projects[0]);
+				counter=0;
+			}
+			if( messageAnim.update(fb) ) {
+				counter++;
+				if( counter >= error_project_count ) {
+					counter = -1;
+				} else {
 					messageAnim.setMessage(error_projects[counter]);
-					fb.clear();
-					mode = ERROR_NAMES;
-				}*/
-				if( error_project_count > 0 ) {
-					if( counter == -1 ) {
-						messageAnim.setMessage(error_projects[0]);
-						counter=0;
-					}
-					if( messageAnim.update(fb) ) {
-						counter++;
-						if( counter >= error_project_count ) {
-							counter = 0;
-							//mode = INDEX;
-						} else {
-							messageAnim.setMessage(error_projects[counter]);
-						}
-					}
 				}
-			break;
-			case ERROR_NAMES:
-				if( messageAnim.update(fb) ) {
-					counter++;
-					if( counter >= error_project_count ) {
-						counter = 0;
-						mode = INDEX;
-					} else {
-						messageAnim.setMessage(error_projects[counter]);
-					}
-				}
-			break;
+			}
 		}
 		return done;
 	}
@@ -93,19 +72,18 @@ public:
 	void reset() {
 		counter = -1;
 		fillX = fillY = 0;
-		mode = INDEX;
-		flashOn = true;
+		fadeLevel = 0;
+		fadeInc = 2;
 	}
 
 
 private:
-	enum Mode {INDEX, ERROR_NAMES};
-
 	LedMatrixScrollAnimation messageAnim;
-	Mode		   	mode;
 	int		   	counter;
 	int			fillX, fillY;
-	bool			flashOn;
+	uint16_t		fadeLevel;
+	int			fadeInc;
+	uint8_t			messageTick;
 };
 
 #endif
