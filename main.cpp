@@ -142,6 +142,10 @@ main(void) {
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 
+	MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOA);
+	MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOD);
+	MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOC);
+
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 
 	// Setup LEDs
@@ -165,7 +169,7 @@ main(void) {
 
 	// Configure timer 
 	MAP_TimerConfigure(TIMER0_BASE, TIMER_CFG_A_PERIODIC | TIMER_CFG_B_PERIODIC | TIMER_CFG_SPLIT_PAIR);
-	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1200);
+	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1500);
 	//MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 5000);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
 	//MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 8000);
@@ -196,13 +200,20 @@ main(void) {
 
 	frameBuffer.init();
 
-	LedMatrixColor color(20, 32, 0x00);
+	LedMatrixColor color(0, 32, 0);
+	LedMatrixColor redColor(32, 0, 0);
 	matrix.clear();
+
+	matrix.fillRect(0, 0, 16, 8, color);
+	matrix.fillRect(0, 8, 16, 16, redColor);
+
+	//frameBuffer.putPixel(3, 0, color);
 
 	char *msg = "#0020Hello #2000World ";
 
 	scrollAnimation.setMessage(msg, strlen(msg));
 	//matrix.setAnimation(&scrollAnimation, 10);
+	matrix.setAnimation(&pulseAnimation, 3);
 	
 #if 1
 	enc28j60_comm_init();
@@ -353,12 +364,15 @@ spi_init(void) {
 
 
 volatile static unsigned long oldTickCounter;
+volatile static uint16_t t = 0;
 #ifdef __cplusplus
 extern "C" {
 #endif
 void timer0_int_handler(void) {
 	MAP_TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 	matrix.update();
+	t++;
+	//while(1) {}
 	//HWREGBITW(&events, FLAG_UPDATE) = 1;
 	//displayTick();
 	//if( tickCounter > oldTickCounter + 2) {
