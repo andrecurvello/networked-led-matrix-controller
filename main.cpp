@@ -116,7 +116,7 @@ uint8_t mac_addr[] = { 0x00, 0xC0, 0x033, 0x50, 0x48, 0x12 };
 static uint8_t index_view_counter;
 static uint8_t current_error_project;
 
-LedMatrixFrameBuffer<16,16,32>	frameBuffer;
+LedMatrixFrameBuffer<8,32,32>	frameBuffer;
 LedMatrixSimpleFont		defaultFont;
 LedMatrix			matrix(frameBuffer, defaultFont);
 
@@ -169,10 +169,10 @@ main(void) {
 
 	// Configure timer 
 	MAP_TimerConfigure(TIMER0_BASE, TIMER_CFG_A_PERIODIC | TIMER_CFG_B_PERIODIC | TIMER_CFG_SPLIT_PAIR);
+	//MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1500);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1500);
-	//MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 5000);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
-	//MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 8000);
+	//MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 90);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);
@@ -202,10 +202,10 @@ main(void) {
 
 	LedMatrixColor color(0, 32, 0);
 	LedMatrixColor redColor(32, 0, 0);
-	matrix.clear();
+	matrix.clear(redColor);
 
-	matrix.fillRect(0, 0, 16, 8, color);
-	matrix.fillRect(0, 8, 16, 16, redColor);
+	//matrix.fillRect(0, 0, 16, 8, color);
+	//matrix.fillRect(0, 8, 16, 16, redColor);
 
 	//frameBuffer.putPixel(3, 0, color);
 

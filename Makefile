@@ -57,7 +57,7 @@ CP      = ${PREFIX_ARM}-objcopy
 OD      = ${PREFIX_ARM}-objdump
 
 # Option arguments for C compiler.
-CFLAGS=-mthumb ${CPU} ${FPU} -Os -ffunction-sections -fdata-sections -MD -std=gnu99 -Wall  -c -g -DUART_BUFFERED
+CFLAGS=-mthumb ${CPU} ${FPU} -O3 -ffunction-sections -fdata-sections -MD -std=gnu99 -Wall  -c -g -DUART_BUFFERED
 # Library stuff passed as flags!
 CFLAGS+= -I ${STELLARISWARE_PATH} -DPART_$(PART) -c -DTARGET_IS_BLIZZARD_RA1
 CFLAGS+= -I$(DIR_LWIP)/include -I$(DIR_LWIP)/include/ipv4 -I$(DIR_LWIP)/include/ipv6 -I.
