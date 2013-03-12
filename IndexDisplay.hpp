@@ -35,7 +35,7 @@ public:
 				color = LedMatrixColor(fadeLevel, 0x00, 0x00);
 			}
 
-			fb[fillY][fillX] = color.getValue();
+			fb.putPixel(fillX, fillY, color);
 			fillX++;
 			if( fillX > fb.getColCount() ) {
 				fillY++;

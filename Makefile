@@ -61,6 +61,7 @@ CFLAGS=-mthumb ${CPU} ${FPU} -O3 -ffunction-sections -fdata-sections -MD -std=gn
 # Library stuff passed as flags!
 CFLAGS+= -I ${STELLARISWARE_PATH} -DPART_$(PART) -c -DTARGET_IS_BLIZZARD_RA1
 CFLAGS+= -I$(DIR_LWIP)/include -I$(DIR_LWIP)/include/ipv4 -I$(DIR_LWIP)/include/ipv6 -I.
+CFLAGS+= -Imcu++-lib/include
 
 CXXFLAGS = $(CFLAGS) -fno-rtti -fno-exceptions
 

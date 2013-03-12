@@ -4,3 +4,6 @@
 [submodule "led-matrix-lib"]
 	path = led-matrix-lib
 	url = ssh://paul@home.xpg.dk:2222/share/git/led-matrix-lib.git
+[submodule "mcu++-lib"]
+	path = mcu++-lib
+	url = ssh://paul@home.xpg.dk:2222/share/git/mcu++-lib.git

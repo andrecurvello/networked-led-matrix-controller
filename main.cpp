@@ -31,6 +31,9 @@
 #include "led-matrix-lib/PulseAnimation.hpp"
 #include "IndexDisplay.hpp"
 
+#include <mcu++/gpio.hpp>
+#include <mcu++/stellaris_gpio.hpp>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -116,7 +119,23 @@ uint8_t mac_addr[] = { 0x00, 0xC0, 0x033, 0x50, 0x48, 0x12 };
 static uint8_t index_view_counter;
 static uint8_t current_error_project;
 
-LedMatrixFrameBuffer<8,32,32>	frameBuffer;
+class LedConfig {
+public:
+	static const uint16_t Rows = 8;
+	static const uint16_t Cols = 16;
+	static const uint16_t Levels = 32;
+
+	typedef MCU::StaticStellarisGPIO<GPIO_PORTC_BASE, 6> GPIORowEnable;
+	typedef MCU::StaticStellarisGPIO<GPIO_PORTC_BASE, 7> GPIORowLatch;
+	typedef MCU::StaticStellarisGPIO<GPIO_PORTC_BASE, 5> GPIORowClock;
+	typedef MCU::StaticStellarisGPIO<GPIO_PORTD_BASE, 6> GPIORowOutput;
+
+	typedef MCU::StaticStellarisGPIO<GPIO_PORTA_BASE, 2> GPIOColOutput;
+	typedef MCU::StaticStellarisGPIO<GPIO_PORTA_BASE, 4> GPIOColClock;
+	typedef MCU::StaticStellarisGPIO<GPIO_PORTA_BASE, 3> GPIOColLatch;
+};
+
+LedMatrixFrameBuffer<LedConfig>	frameBuffer;
 LedMatrixSimpleFont		defaultFont;
 LedMatrix			matrix(frameBuffer, defaultFont);
 
@@ -154,13 +173,13 @@ main(void) {
 	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_3);
 
         // Setup Display pins
-	MAP_GPIOPinTypeGPIOOutput(LATCH_PORT, 		LATCH_PIN);
+	/*MAP_GPIOPinTypeGPIOOutput(LATCH_PORT, 		LATCH_PIN);
 	MAP_GPIOPinTypeGPIOOutput(SER_OUT_PORT, 	SER_OUT_PIN);
 	MAP_GPIOPinTypeGPIOOutput(CLK_OUT_PORT, 	CLK_OUT_PIN);
 	MAP_GPIOPinTypeGPIOOutput(ROW_SER_OUT_PORT, 	ROW_SER_OUT_PIN);
 	MAP_GPIOPinTypeGPIOOutput(ROW_CLK_OUT_PORT, 	ROW_CLK_OUT_PIN);
 	MAP_GPIOPinTypeGPIOOutput(ROW_LATCH_PORT, 	ROW_LATCH_PIN);
-	MAP_GPIOPinTypeGPIOOutput(ROW_ENABLE_PORT, 	ROW_ENABLE_PIN);
+	MAP_GPIOPinTypeGPIOOutput(ROW_ENABLE_PORT, 	ROW_ENABLE_PIN);*/
 
 	// Setup SysTick timer
 	MAP_SysTickPeriodSet(MAP_SysCtlClockGet() / SYSTICKHZ);
@@ -213,7 +232,7 @@ main(void) {
 
 	scrollAnimation.setMessage(msg, strlen(msg));
 	//matrix.setAnimation(&scrollAnimation, 10);
-	matrix.setAnimation(&pulseAnimation, 3);
+	matrix.setAnimation(&testAnimation, 3);
 	
 #if 1
 	enc28j60_comm_init();
