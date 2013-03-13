@@ -29,6 +29,7 @@
 #include "led-matrix-lib/LedMatrixSimpleFont.hpp"
 #include "led-matrix-lib/TestAnimation.hpp"
 #include "led-matrix-lib/PulseAnimation.hpp"
+#include "led-matrix-lib/SPIFrameBuffer.hpp"
 #include "IndexDisplay.hpp"
 
 #include <mcu++/gpio.hpp>
@@ -39,7 +40,7 @@ extern "C" {
 #endif
 #include "enc28j60.h"
 #include "jenkins-api-client.h"
-#include "led_matrix_config.h"
+//#include "led_matrix_config.h"
 #ifdef __cplusplus
 }
 #endif
@@ -119,6 +120,7 @@ uint8_t mac_addr[] = { 0x00, 0xC0, 0x033, 0x50, 0x48, 0x12 };
 static uint8_t index_view_counter;
 static uint8_t current_error_project;
 
+#if 0
 class LedConfig {
 public:
 	static const uint16_t Rows = 8;
@@ -136,6 +138,45 @@ public:
 };
 
 LedMatrixFrameBuffer<LedConfig>	frameBuffer;
+#endif
+
+typedef MCU::StaticStellarisGPIO<GPIO_PORTA_BASE, 3> ChipSelectPin;
+
+class LedConfig {
+public:
+	static const uint16_t Rows = 8;
+	static const uint16_t Cols = 16;
+	static const uint16_t Levels = 32;
+
+	static void SPIInit() {
+		MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI0);
+		MAP_GPIOPinConfigure(GPIO_PA2_SSI0CLK);
+		MAP_GPIOPinConfigure(GPIO_PA4_SSI0RX);
+		MAP_GPIOPinConfigure(GPIO_PA5_SSI0TX);
+
+		MAP_GPIOPinTypeSSI(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_4 | GPIO_PIN_5);
+		MAP_SSIConfigSetExpClk(SSI0_BASE, MAP_SysCtlClockGet(), SSI_FRF_MOTO_MODE_0, SSI_MODE_MASTER, 1000000, 8);
+		MAP_SSIEnable(SSI0_BASE);
+		unsigned long b;
+		while(MAP_SSIDataGetNonBlocking(SSI0_BASE, &b)) {}
+	}
+
+	static void SpiSend(uint8_t c) {
+		unsigned long val;
+		MAP_SSIDataPut(SSI0_BASE, c);
+		MAP_SSIDataGet(SSI0_BASE, &val);
+	}
+
+	static void SpiSelect() {
+		ChipSelectPin::Write(0);
+	}
+
+	static void SpiDeSelect() {
+		ChipSelectPin::Write(1);
+	}
+};
+
+LedMatrixNS::SPIFrameBuffer<LedConfig>	frameBuffer;
 LedMatrixSimpleFont		defaultFont;
 LedMatrix			matrix(frameBuffer, defaultFont);
 
@@ -143,6 +184,7 @@ LedMatrixScrollAnimation	scrollAnimation(defaultFont);
 LedMatrixTestAnimation		testAnimation(matrix, scrollAnimation);
 IndexDisplay			indexDisplay(defaultFont);
 PulseAnimation			pulseAnimation;
+
 
 int
 main(void) {
@@ -161,9 +203,9 @@ main(void) {
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 
-	MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOA);
+	/*MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOA);
 	MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOD);
-	MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOC);
+	MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOC);*/
 
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 
@@ -181,6 +223,7 @@ main(void) {
 	MAP_GPIOPinTypeGPIOOutput(ROW_LATCH_PORT, 	ROW_LATCH_PIN);
 	MAP_GPIOPinTypeGPIOOutput(ROW_ENABLE_PORT, 	ROW_ENABLE_PIN);*/
 
+
 	// Setup SysTick timer
 	MAP_SysTickPeriodSet(MAP_SysCtlClockGet() / SYSTICKHZ);
 	MAP_SysTickEnable();
@@ -189,9 +232,9 @@ main(void) {
 	// Configure timer 
 	MAP_TimerConfigure(TIMER0_BASE, TIMER_CFG_A_PERIODIC | TIMER_CFG_B_PERIODIC | TIMER_CFG_SPLIT_PAIR);
 	//MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1500);
-	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1500);
+	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 65535);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
-	//MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 90);
+	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 200);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);
@@ -207,17 +250,23 @@ main(void) {
 
 	FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0);
 
+#if 0
 	FAST_GPIOPinWrite(LATCH_PORT, LATCH_PIN, 0);
 	FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, 0);
 	FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, 0);
 
 	//FAST_GPIOPinWrite(ROW_ENABLE_PORT, ROW_ENABLE_PIN, ROW_ENABLE_PIN);
 	FAST_GPIOPinWrite(ROW_ENABLE_PORT, ROW_ENABLE_PIN, 0);
+#endif
 
 	//displayInit();
 	//set_message("LOADING  ", 9);
 
 	frameBuffer.init();
+
+	//MAP_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, GPIO_PIN_3);
+	ChipSelectPin::ConfigureDirection(MCU::GPIO::Output);
+	ChipSelectPin::Write(1);
 
 	LedMatrixColor color(0, 32, 0);
 	LedMatrixColor redColor(32, 0, 0);
