@@ -144,7 +144,7 @@ typedef MCU::StaticStellarisGPIO<GPIO_PORTA_BASE, 3> ChipSelectPin;
 
 class LedConfig {
 public:
-	static const uint16_t Rows = 8;
+	static const uint16_t Rows = 16;
 	static const uint16_t Cols = 16;
 	static const uint16_t Levels = 32;
 
@@ -155,7 +155,7 @@ public:
 		MAP_GPIOPinConfigure(GPIO_PA5_SSI0TX);
 
 		MAP_GPIOPinTypeSSI(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_4 | GPIO_PIN_5);
-		MAP_SSIConfigSetExpClk(SSI0_BASE, MAP_SysCtlClockGet(), SSI_FRF_MOTO_MODE_0, SSI_MODE_MASTER, 10000, 8);
+		MAP_SSIConfigSetExpClk(SSI0_BASE, MAP_SysCtlClockGet(), SSI_FRF_MOTO_MODE_0, SSI_MODE_MASTER, 600000, 8);
 		MAP_SSIEnable(SSI0_BASE);
 		unsigned long b;
 		while(MAP_SSIDataGetNonBlocking(SSI0_BASE, &b)) {}
@@ -234,7 +234,7 @@ main(void) {
 	//MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1500);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 65535);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
-	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 200);
+	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 5);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);
