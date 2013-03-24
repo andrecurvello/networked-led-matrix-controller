@@ -155,7 +155,7 @@ public:
 		MAP_GPIOPinConfigure(GPIO_PA5_SSI0TX);
 
 		MAP_GPIOPinTypeSSI(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_4 | GPIO_PIN_5);
-		MAP_SSIConfigSetExpClk(SSI0_BASE, MAP_SysCtlClockGet(), SSI_FRF_MOTO_MODE_0, SSI_MODE_MASTER, 600000, 8);
+		MAP_SSIConfigSetExpClk(SSI0_BASE, MAP_SysCtlClockGet(), SSI_FRF_MOTO_MODE_0, SSI_MODE_MASTER, 1000000, 8);
 		MAP_SSIEnable(SSI0_BASE);
 		unsigned long b;
 		while(MAP_SSIDataGetNonBlocking(SSI0_BASE, &b)) {}
@@ -176,14 +176,16 @@ public:
 	}
 };
 
-LedMatrixNS::SPIFrameBuffer<LedConfig>	frameBuffer;
-LedMatrixSimpleFont		defaultFont;
-LedMatrix			matrix(frameBuffer, defaultFont);
+typedef LedMatrixNS::SPIFrameBuffer<LedConfig> FrameBuffer;
 
-LedMatrixScrollAnimation	scrollAnimation(defaultFont);
-LedMatrixTestAnimation		testAnimation(matrix, scrollAnimation);
-IndexDisplay			indexDisplay(defaultFont);
-PulseAnimation			pulseAnimation;
+FrameBuffer				frameBuffer;
+LedMatrixSimpleFont			defaultFont;
+LedMatrix<FrameBuffer>			matrix(frameBuffer, defaultFont);
+
+LedMatrixScrollAnimation<FrameBuffer>	scrollAnimation(defaultFont);
+LedMatrixTestAnimation<FrameBuffer>	testAnimation(matrix, scrollAnimation);
+IndexDisplay<FrameBuffer>		indexDisplay(defaultFont);
+PulseAnimation<FrameBuffer>		pulseAnimation;
 
 
 int
@@ -234,7 +236,7 @@ main(void) {
 	//MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1500);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 65535);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
-	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 5);
+	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 20);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);

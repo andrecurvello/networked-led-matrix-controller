@@ -14,7 +14,8 @@ extern "C" {
 	extern char error_projects[MAX_ERROR_PROJECTS][MAX_NAME_LEN];
 }
 
-class IndexDisplay : public LedMatrixAnimation {
+template<class FbType>
+class IndexDisplay : public LedMatrixAnimation<FbType> {
 public:
 	IndexDisplay(LedMatrixFont &font)
 		: messageAnim(font)
@@ -22,7 +23,7 @@ public:
 		reset();
 	}
 
-	bool update(AbstractLedMatrixFrameBuffer &fb) {
+	bool update(FbType &fb) {
 		bool done = false;
 		fillX = fillY = 0;
 		for(int i=0;i<next_project;i++) {
@@ -78,7 +79,7 @@ public:
 
 
 private:
-	LedMatrixScrollAnimation messageAnim;
+	LedMatrixScrollAnimation<FbType> messageAnim;
 	int		   	counter;
 	int			fillX, fillY;
 	uint16_t		fadeLevel;
