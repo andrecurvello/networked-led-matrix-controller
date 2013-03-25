@@ -30,6 +30,12 @@
 * Description:	LM4F120H5QR startup code.
 */
 
+#include "inc/hw_nvic.h"
+#include "inc/hw_types.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include "utils/uartstdio.h"
+
 //-----------------------------------------------------------------------------
 // 							 Functions declarations
 //-----------------------------------------------------------------------------
@@ -289,11 +295,74 @@ void nmi_handler(void){
     }
 }
 
+void prvGetRegistersFromStack( uint32_t *pulFaultStackAddress );
+
 // Hard fault handler code NVIC 3
 void hardfault_handler(void){
+    __asm volatile
+    (
+        " tst lr, #4                                                \n"
+        " ite eq                                                    \n"
+        " mrseq r0, msp                                             \n"
+        " mrsne r0, psp                                             \n"
+        " ldr r1, [r0, #24]                                         \n"
+        " ldr r2, handler2_address_const                            \n"
+        " bx r2                                                     \n"
+        " handler2_address_const: .word prvGetRegistersFromStack    \n"
+    );
+#if 0
 	// Just loop forever, so if you want to debug the processor it's running.
     while(1){
     }
+#endif
+}
+
+void prvGetRegistersFromStack( uint32_t *pulFaultStackAddress )
+{
+/* These are volatile to try and prevent the compiler/linker optimising them
+away as the variables never actually get used.  If the debugger won't show the
+values of the variables, make them global my moving their declaration outside
+of this function. */
+volatile uint32_t r0;
+volatile uint32_t r1;
+volatile uint32_t r2;
+volatile uint32_t r3;
+volatile uint32_t r12;
+volatile uint32_t lr; /* Link register. */
+volatile uint32_t pc; /* Program counter. */
+volatile uint32_t psr;/* Program status register. */
+
+    r0 = pulFaultStackAddress[ 0 ];
+    r1 = pulFaultStackAddress[ 1 ];
+    r2 = pulFaultStackAddress[ 2 ];
+    r3 = pulFaultStackAddress[ 3 ];
+
+    r12 = pulFaultStackAddress[ 4 ];
+    lr = pulFaultStackAddress[ 5 ];
+    pc = pulFaultStackAddress[ 6 ];
+    psr = pulFaultStackAddress[ 7 ];
+
+    #define printf UARTprintf
+
+    //printf ("\n\n[Hard fault handler - all numbers in hex]\n");
+    printf ("PC [R15] = %x  program counter\n", pc);
+    printf ("LR [R14] = %x  subroutine call return address\n", lr);
+    printf ("R0 = %x\n", r0);
+    printf ("R1 = %x\n", r1);
+    printf ("R2 = %x\n", r2);
+    printf ("R3 = %x\n", r3);
+    printf ("R12 = %x\n", r12);
+    printf ("PSR = %x\n", psr);
+    printf ("BFAR = %x\n", (*((volatile unsigned long *)(0xE000ED38))));
+    printf ("CFSR = %x\n", (*((volatile unsigned long *)(0xE000ED28))));
+    printf ("HFSR = %x\n", (*((volatile unsigned long *)(0xE000ED2C))));
+    printf ("DFSR = %x\n", (*((volatile unsigned long *)(0xE000ED30))));
+    printf ("AFSR = %x\n", (*((volatile unsigned long *)(0xE000ED3C))));
+    UARTFlushTx(false);
+    //printf ("SCB_SHCSR = %x\n", SCB->SHCSR);
+
+    /* When the following line is hit, the variables contain the register values. */
+    for( ;; );
 }
 
 // Empty handler used as default.

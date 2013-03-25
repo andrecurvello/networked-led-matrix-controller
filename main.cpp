@@ -30,7 +30,6 @@
 #include "led-matrix-lib/TestAnimation.hpp"
 #include "led-matrix-lib/PulseAnimation.hpp"
 #include "led-matrix-lib/SPIFrameBuffer.hpp"
-#include "IndexDisplay.hpp"
 
 #include <mcu++/gpio.hpp>
 #include <mcu++/stellaris_gpio.hpp>
@@ -69,38 +68,8 @@ static void status_callback(const char *name, const char *color);
 }
 #endif
 
-#if 0
-static void indexDisplay(void);
-#endif
-
-/*const uint16_t static_data[8][8] = {
-		{0xFF, 0xF0, 0xFF, 0x0F, 0xFF, 0x00, 0xFF, 0x00},
-		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
-		{0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00},
-		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
-		{0xF0, 0x00, 0xF0, 0x00, 0xF0, 0x00, 0xF0, 0x00},
-		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
-		{0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00},
-		{0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF},
-};*/
-//uint16_t index_view[LED_MATRIX_ROWS][LED_MATRIX_COLS];
 volatile static unsigned long events;
 volatile static unsigned long tickCounter;
-//uint8_t curRow, curCol;
-
-#define MAX_ERROR_PROJECTS 	2
-#define MAX_PROJECTS		30
-#define MAX_NAME_LEN 		30
-
-uint8_t error_project_count;
-char error_projects[MAX_ERROR_PROJECTS][MAX_NAME_LEN];
-uint8_t project_status[MAX_PROJECTS];
-uint8_t next_project;
-
-uint8_t index_view_mode;
-
-#define INDEX_VIEW_MODE_INDEX 	0
-#define INDEX_VIEW_MODE_ERRORED	1
 
 #define FLAG_SYSTICK	0
 #define FLAG_UPDATE	1
@@ -184,9 +153,7 @@ LedMatrix<FrameBuffer>			matrix(frameBuffer, defaultFont);
 
 LedMatrixScrollAnimation<FrameBuffer>	scrollAnimation(defaultFont);
 LedMatrixTestAnimation<FrameBuffer>	testAnimation(matrix, scrollAnimation);
-IndexDisplay<FrameBuffer>		indexDisplay(defaultFont);
 PulseAnimation<FrameBuffer>		pulseAnimation;
-
 
 int
 main(void) {
@@ -205,25 +172,12 @@ main(void) {
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 
-	/*MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOA);
-	MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOD);
-	MAP_SysCtlGPIOAHBEnable(SYSCTL_PERIPH_GPIOC);*/
-
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
 
 	// Setup LEDs
 	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1);
 	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_2);
 	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_3);
-
-        // Setup Display pins
-	/*MAP_GPIOPinTypeGPIOOutput(LATCH_PORT, 		LATCH_PIN);
-	MAP_GPIOPinTypeGPIOOutput(SER_OUT_PORT, 	SER_OUT_PIN);
-	MAP_GPIOPinTypeGPIOOutput(CLK_OUT_PORT, 	CLK_OUT_PIN);
-	MAP_GPIOPinTypeGPIOOutput(ROW_SER_OUT_PORT, 	ROW_SER_OUT_PIN);
-	MAP_GPIOPinTypeGPIOOutput(ROW_CLK_OUT_PORT, 	ROW_CLK_OUT_PIN);
-	MAP_GPIOPinTypeGPIOOutput(ROW_LATCH_PORT, 	ROW_LATCH_PIN);
-	MAP_GPIOPinTypeGPIOOutput(ROW_ENABLE_PORT, 	ROW_ENABLE_PIN);*/
 
 
 	// Setup SysTick timer
@@ -252,18 +206,6 @@ main(void) {
 
 	FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0);
 
-#if 0
-	FAST_GPIOPinWrite(LATCH_PORT, LATCH_PIN, 0);
-	FAST_GPIOPinWrite(SER_OUT_PORT, SER_OUT_PIN, 0);
-	FAST_GPIOPinWrite(CLK_OUT_PORT, CLK_OUT_PIN, 0);
-
-	//FAST_GPIOPinWrite(ROW_ENABLE_PORT, ROW_ENABLE_PIN, ROW_ENABLE_PIN);
-	FAST_GPIOPinWrite(ROW_ENABLE_PORT, ROW_ENABLE_PIN, 0);
-#endif
-
-	//displayInit();
-	//set_message("LOADING  ", 9);
-
 	frameBuffer.init();
 
 	//MAP_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, GPIO_PIN_3);
@@ -274,15 +216,9 @@ main(void) {
 	LedMatrixColor redColor(32, 0, 0);
 	matrix.clear(redColor);
 
-	//matrix.fillRect(0, 0, 16, 8, color);
-	//matrix.fillRect(0, 8, 16, 16, redColor);
-
-	//frameBuffer.putPixel(3, 0, color);
-
 	char *msg = "#0020Hello #2000World ";
 
 	scrollAnimation.setMessage(msg, strlen(msg));
-	//matrix.setAnimation(&scrollAnimation, 10);
 	matrix.setAnimation(&testAnimation, 3);
 	
 #if 1
@@ -303,21 +239,6 @@ main(void) {
 	dhcp_start(&netif);
 #endif
 
-#if 0
-	for(int i=0; i<8; i++) {
-		for(int l=0; l<8; l++) {
-			if( msg_mode == MODE_SCROLL ) {
-				fb[i][l] = ((font[msg[next_char]-32][i] >> (7-l)) & 0x1) * COLOR(0,15,0); //msg_color[next_char];
-			} else {
-			//fb[i][l] = static_data[i][l];
-				fb[i][l] = 0;
-			}
-		}
-	}
-
-	next_char++;
-#endif
-
         UARTprintf("Welcome\n");
 
 
@@ -326,9 +247,9 @@ main(void) {
 	//set_char(FONT_HAPPY_SMILEY, COLOR(0, 15, 0));
 
 	unsigned long last_arp_time, last_tcp_time, last_dhcp_coarse_time,
-		      last_dhcp_fine_time, last_status_time, last_change;
+		      last_dhcp_fine_time, last_change;
 
-	last_change = last_status_time = last_arp_time = last_tcp_time = last_dhcp_coarse_time = last_dhcp_fine_time = 0;
+	last_change = last_arp_time = last_tcp_time = last_dhcp_coarse_time = last_dhcp_fine_time = 0;
 
 	bool status_done = false;
 
@@ -369,20 +290,6 @@ main(void) {
 				last_dhcp_fine_time = tickCounter;
 			}
 
-#if 1
-			if( (tickCounter - last_status_time) * TICK_MS >= 20000) {
-				ip_addr_t addr;
-				UARTprintf("Reload status\r\n");
-				IP4_ADDR(&addr, 192, 168, 1, 226);
-				jenkins_get_status(addr, "192.168.1.226", &status_callback);
-				//IP4_ADDR(&addr, 10, 0, 0, 239);
-				//jenkins_get_status(addr, "10.0.0.239", &status_callback);
-				//curRow = curCol = 0;
-				next_project = 0;
-				last_status_time = tickCounter;
-				status_done = true;
-			}
-#endif
 		}
 		
 		if( HWREGBITW(&events, FLAG_ENC_INT) == 1 ) {
@@ -504,98 +411,11 @@ uint8_t spi_send(uint8_t c) {
 	return (uint8_t)val;
 }
 
-
 uint32_t
 sys_now(void) {
 	return tickCounter;
 }
-
-#if 1
-void status_callback(const char *name, const char *color)
-{
-#if 1
-	if( next_project == 0) {
-		UARTprintf("Update view\r\n");
-		//clearDisplay(index_view);
-		//memcpy(fb, index_view, FB_SIZE);
-		error_project_count = 0;
-		//matrix.clear();
-		matrix.setAnimation(&indexDisplay, 4);
-		//indexDisplay.reset();
-		/*index_view_counter = 0;
-		index_view_mode = INDEX_VIEW_MODE_INDEX;
-		displaySetAnim(indexDisplay, 2);*/
-	}
-#endif
-	//UARTprintf("Project %s has color %s\n", name, color);
-	//UARTFlushTx(false);
-	uint8_t s = 0;
-
-	if( strncmp(color, "blue", 4) == 0) {
-		if( strncmp(color+4, "_anime", 6) == 0 ) {
-			s = 2;
-		} else {
-			s = 1;
-		}
-	} else if( strncmp(color, "disabled", 8) == 0) {
-		return;
-		//c = COLOR(15, 15, 0);
-	} else if( strncmp(color, "red", 3) == 0) {
-		//c = COLOR(15, 0, 0);
-		if( strncmp(color+3, "_anime", 6) == 0 ) {
-			s = 3;
-		} else {
-			s = 0;
-		}
-		strncpy(error_projects[error_project_count], name, MAX_NAME_LEN);
-		error_project_count++;
-	}
-	
-	project_status[next_project] = s;
-	next_project++;
-	UARTFlushTx(false);
-#if 0
-	index_view[curRow][curCol] = c;
-
-	curCol++;
-	if( curCol >= LED_MATRIX_COLS ) {
-		curCol = 0;
-		curRow = (curRow+1) % 7;
-	}
-#endif
-}
-#endif
 #ifdef __cplusplus
 }
 #endif
 
-#if 0
-static void
-indexDisplay(void)
-{
-	if( index_view_mode == INDEX_VIEW_MODE_INDEX ) {
-		memcpy(fb, index_view, FB_SIZE);
-		index_view_counter++;
-		if( index_view_counter > 30 ) {
-			index_view_counter = 0;
-			if( error_project_count > 0 ) {
-				displaySetAnim(indexDisplay, 1);
-				index_view_mode = INDEX_VIEW_MODE_ERRORED;
-				current_error_project = 0;
-				displayScrollTickSetMessage(error_projects[0], strlen(error_projects[0]));
-			}
-		}
-	} else if( index_view_mode == INDEX_VIEW_MODE_ERRORED) {
-		if( displayScrollTick() ) {
-			current_error_project++;
-			if( current_error_project >= error_project_count ) {
-				index_view_mode = INDEX_VIEW_MODE_INDEX;
-				displaySetAnim(indexDisplay, 2);
-			} else {
-				displayScrollTickSetMessage(error_projects[current_error_project], 
-							    strlen(error_projects[current_error_project]));
-			}
-		}
-	}
-}
-#endif
