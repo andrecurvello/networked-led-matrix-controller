@@ -127,6 +127,8 @@ SRC = LM4F_startup.c \
       main.c \
       dummyfuncs.c \
       enc28j60.c \
+      httpd.cpp \
+      TCPConnection.cpp \
       jenkins-api-client.c \
       parser.c \
       json.c \
