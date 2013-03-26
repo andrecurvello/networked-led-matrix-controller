@@ -31,6 +31,8 @@
 #include "led-matrix-lib/PulseAnimation.hpp"
 #include "led-matrix-lib/SPIFrameBuffer.hpp"
 
+#include "httpd.hpp"
+
 #include <mcu++/gpio.hpp>
 #include <mcu++/stellaris_gpio.hpp>
 
@@ -155,6 +157,8 @@ LedMatrixScrollAnimation<FrameBuffer>	scrollAnimation(defaultFont);
 LedMatrixTestAnimation<FrameBuffer>	testAnimation(matrix, scrollAnimation);
 PulseAnimation<FrameBuffer>		pulseAnimation;
 
+Httpd					httpd;
+
 int
 main(void) {
 	struct netif netif;
@@ -221,7 +225,6 @@ main(void) {
 	scrollAnimation.setMessage(msg, strlen(msg));
 	matrix.setAnimation(&testAnimation, 3);
 	
-#if 1
 	enc28j60_comm_init();
 	enc_init(mac_addr);
 
@@ -233,18 +236,13 @@ main(void) {
 	IP4_ADDR(&ipaddr, 0,0,0,0);
 	IP4_ADDR(&netmask, 0, 0, 0, 0);
 
-
 	netif_add(&netif, &ipaddr, &netmask, &gw, NULL, enc28j60_init, ethernet_input);
 	netif_set_default(&netif);
 	dhcp_start(&netif);
-#endif
+
+	httpd.init();
 
         UARTprintf("Welcome\n");
-
-
-	//memcpy(fb, static_data, 128);
-
-	//set_char(FONT_HAPPY_SMILEY, COLOR(0, 15, 0));
 
 	unsigned long last_arp_time, last_tcp_time, last_dhcp_coarse_time,
 		      last_dhcp_fine_time, last_change;
