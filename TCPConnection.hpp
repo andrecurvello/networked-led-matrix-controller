@@ -19,7 +19,7 @@ public:
 
 private:
 	virtual err_t onReceive(struct pbuf *p, err_t err);
-	virtual err_t onPoll();
+	virtual err_t onPoll() {return ERR_OK;}
 	virtual err_t onSent(uint16_t len);
 	virtual err_t onRemoteClose(err_t err) {delete this; return ERR_OK;}
 

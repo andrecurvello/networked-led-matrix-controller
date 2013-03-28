@@ -26,13 +26,6 @@ TCPConnection::onReceive(struct pbuf *p, err_t err) {
 }
 
 err_t
-TCPConnection::onPoll() {
-	UARTprintf("Poll\r\n");
-	delete this;
-	return ERR_OK;
-}
-
-err_t
 TCPConnection::onSent(uint16_t len) {
 	UARTprintf("Sent %d bytes\r\n", len);
 	return ERR_OK;

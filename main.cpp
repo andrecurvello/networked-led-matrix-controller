@@ -126,7 +126,7 @@ public:
 		MAP_GPIOPinConfigure(GPIO_PA5_SSI0TX);
 
 		MAP_GPIOPinTypeSSI(GPIO_PORTA_BASE, GPIO_PIN_2 | GPIO_PIN_4 | GPIO_PIN_5);
-		MAP_SSIConfigSetExpClk(SSI0_BASE, MAP_SysCtlClockGet(), SSI_FRF_MOTO_MODE_0, SSI_MODE_MASTER, 1500000, 8);
+		MAP_SSIConfigSetExpClk(SSI0_BASE, MAP_SysCtlClockGet(), SSI_FRF_MOTO_MODE_0, SSI_MODE_MASTER, 1000000, 8);
 		MAP_SSIEnable(SSI0_BASE);
 		unsigned long b;
 		while(MAP_SSIDataGetNonBlocking(SSI0_BASE, &b)) {}
@@ -157,17 +157,90 @@ LedMatrixScrollAnimation<FrameBuffer>	scrollAnimation(defaultFont);
 LedMatrixTestAnimation<FrameBuffer>	testAnimation(matrix, scrollAnimation);
 PulseAnimation<FrameBuffer>		pulseAnimation;
 
-Httpd					httpd;
+class MyConnection : public HttpConnection {
+public:
+	MyConnection(struct tcp_pcb *pcb) 
+		: HttpConnection(pcb),
+		  handlingUrl(None)
+	{}
+
+private:
+	void setRequest(char *method, char *path) {
+		UARTprintf("Method: '%s'\r\n", method);
+		UARTprintf("Path: '%s'\r\n", path);
+
+		if( strcmp(path, "/display") == 0 ) {
+			handlingUrl = Display;
+		} else if( strcmp(path, "/pixel") == 0 ) {
+			handlingUrl = Pixel;
+		}
+
+		if( strcmp(method, "GET") == 0) {
+			requestMethod = Httpd::GET;
+		}
+	}
+
+	int convert(const char *string)
+	{
+		int i;
+		i=0;
+		while(*string)
+		{
+			i = (i*10) + (*string - '0');
+			string++;
+		}
+		return i;
+	}
+
+	void onHeader(char *key, char *val) {
+		UARTprintf("'%s' = '%s'\r\n");
+		if( strcmp(key, "X") == 0 ) {
+			x = convert(val);
+			UARTprintf("set x to %d\n", x);
+		} else if( strcmp(key, "Y") == 0) {
+			y = convert(val);
+		} else if( strcmp(key, "Color") == 0) {
+			color = convert(val);
+		}
+	}
+
+	void onHeaderDone() {
+		UARTprintf("Drawing %d at (%d,%d)\r\n", color, x, y);
+		frameBuffer.putPixel(x, y, color);
+		//frameBuffer.putPixel(1, 1, 0xffff);
+		delete this;
+	}
+
+private:
+	typedef enum {
+		None,
+		Display,
+		Pixel
+	} URL;
+
+	URL handlingUrl;
+	Httpd::RequestMethod requestMethod;
+	uint16_t x, y, color;
+};
+
+class MyWebServer : public Httpd {
+private:
+	HttpConnection *createConnection(struct tcp_pcb *pcb) {
+		return new MyConnection(pcb);
+	}
+};
+
+MyWebServer			httpd;
 
 int
 main(void) {
 	struct netif netif;
 
 	cpu_init();
-        uart_init();
-        spi_init();
+	uart_init();
+	spi_init();
 
-        UARTprintf("Startup\n");
+	UARTprintf("Startup\n");
 
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
 	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
@@ -194,7 +267,7 @@ main(void) {
 	//MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 1500);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_A, 65535);
 	MAP_TimerLoadSet(TIMER0_BASE, TIMER_B, 15000);//ROM_SysCtlClockGet());
-	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 5);
+	MAP_TimerPrescaleSet(TIMER0_BASE, TIMER_A, 50);
 
 	MAP_IntEnable(INT_TIMER0A);
 	MAP_IntEnable(INT_TIMER0B);
@@ -218,12 +291,13 @@ main(void) {
 
 	LedMatrixColor color(0, 32, 0);
 	LedMatrixColor redColor(32, 0, 0);
-	matrix.clear(redColor);
+	frameBuffer.clear();
 
 	char *msg = "#0020Hello #2000World ";
 
 	scrollAnimation.setMessage(msg, strlen(msg));
-	matrix.setAnimation(&testAnimation, 3);
+	//matrix.setAnimation(&testAnimation, 3);
+	//frameBuffer.putPixel(3,3, redColor);
 	
 	enc28j60_comm_init();
 	enc_init(mac_addr);
