@@ -167,9 +167,9 @@ public:
 
 private:
 	void setRequest(char *method, char *path) {
-		if( strcmp(path, "/display") == 0 ) {
-			handlingUrl = Display;
-		} else if( strcmp(path, "/pixel") == 0 ) {
+		if( strcmp(path, "/PutRect") == 0 ) {
+			handlingUrl = PutRect;
+		} else if( strcmp(path, "/Pixel") == 0 ) {
 			handlingUrl = Pixel;
 		}
 
@@ -196,17 +196,38 @@ private:
 		} else if( strcmp(key, "Y") == 0) {
 			y = convert(val);
 		} else if( strcmp(key, "Color") == 0) {
-			color = convert(val);
+			parameters.putPixel.color = convert(val);
+		} else if( strcmp(key, "Width") == 0) {
+			parameters.putRect.width = convert(val);
+		} else if( strcmp(key, "Height") == 0) {
+			parameters.putRect.height = convert(val);
 		}
 	}
 
 	void onHeaderDone() {
-		UARTprintf("Drawing %d at (%d,%d)\r\n", color, x, y);
-		frameBuffer.putPixel(x, y, color);
-		if( sendData(MyConnection::okResponse, strlen(MyConnection::okResponse)) == ERR_OK ) {
-			state = SendingData;
-		} else {
-			delete this;
+		if( handlingUrl == Pixel ) {
+			UARTprintf("Drawing %d at (%d,%d)\r\n", parameters.putPixel.color, x, y);
+			frameBuffer.putPixel(x, y, parameters.putPixel.color);
+		} else if( handlingUrl == PutRect) {
+			parameters.putRect.dataCount = parameters.putRect.width * parameters.putRect.height * 2;
+			UARTprintf("Drawing from (%d,%d) -> (%d, %d)\r\n", x, y, 
+					x + parameters.putRect.width,
+					y + parameters.putRect.height);
+			UARTprintf("Expecting %d bytes\r\n", parameters.putRect.dataCount);
+		}
+
+		if( handlingUrl != PutRect ) {
+			const char *response = MyConnection::ResponseNotFound;
+
+			if( handlingUrl != None ) {
+				response = MyConnection::ResponseOk;
+			}
+
+			if( sendData(response, strlen(response)) == ERR_OK ) {
+				state = SendingData;
+			} else {
+				delete this;
+			}
 		}
 	}
 
@@ -217,10 +238,26 @@ private:
 		return ERR_OK;
 	}
 
+	void onBody(char *data, uint16_t len) {
+		if( len > parameters.putRect.dataCount ) {
+			parameters.putRect.dataCount = 0;
+		} else {
+			parameters.putRect.dataCount -= len;
+		}
+		UARTprintf("dataCount: %d\n", parameters.putRect.dataCount);
+		if( parameters.putRect.dataCount == 0 ) {
+			if( sendData(MyConnection::ResponseOk, strlen(MyConnection::ResponseOk)) == ERR_OK ) {
+				state = SendingData;
+			} else {
+				delete this;
+			}
+		}
+	}
+
 private:
 	typedef enum {
 		None,
-		Display,
+		PutRect,
 		Pixel
 	} URL;
 
@@ -232,11 +269,25 @@ private:
 	URL 			handlingUrl;
 	Httpd::RequestMethod 	requestMethod;
 	State			state;
-	uint16_t 		x, y, color;
-	static const char	okResponse[];
+
+	uint16_t		x, y;
+	union {
+		struct {
+			uint16_t color;
+		} putPixel;
+
+		struct {
+			uint16_t width, height;
+			uint32_t dataCount;
+		} putRect;
+	} parameters;
+
+	static const char	ResponseOk[];
+	static const char	ResponseNotFound[];
 };
 
-const char MyConnection::okResponse[] = "HTTP/1.1 200 OK\r\n";
+const char MyConnection::ResponseOk[] = "HTTP/1.1 200 OK\r\n";
+const char MyConnection::ResponseNotFound[] = "HTTP/1.1 404 Not Found\r\n";
 
 class MyWebServer : public Httpd {
 private:
