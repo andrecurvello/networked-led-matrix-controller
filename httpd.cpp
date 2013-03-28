@@ -120,13 +120,11 @@ HttpConnection::parseHeader(char *data, uint16_t *len) {
 	while(true) {
 		int lineEnd = findLineEnd(data, *len);
 		if( lineEnd < 0 ) {
-			UARTprintf("Negative line end\r\n");
 			// No line-ends found, better luck next time
 			return data;
 		}
 
 		data[lineEnd] = '\0';
-		UARTprintf("'%s'\r\n", data);
 
 		int sep = findSubStr(data, lineEnd, ": ", 2);
 		data[sep] = '\0';
