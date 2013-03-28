@@ -161,14 +161,12 @@ class MyConnection : public HttpConnection {
 public:
 	MyConnection(struct tcp_pcb *pcb) 
 		: HttpConnection(pcb),
-		  handlingUrl(None)
+		  handlingUrl(None),
+		  state(ReceivingData)
 	{}
 
 private:
 	void setRequest(char *method, char *path) {
-		UARTprintf("Method: '%s'\r\n", method);
-		UARTprintf("Path: '%s'\r\n", path);
-
 		if( strcmp(path, "/display") == 0 ) {
 			handlingUrl = Display;
 		} else if( strcmp(path, "/pixel") == 0 ) {
@@ -193,10 +191,8 @@ private:
 	}
 
 	void onHeader(char *key, char *val) {
-		UARTprintf("'%s' = '%s'\r\n");
 		if( strcmp(key, "X") == 0 ) {
 			x = convert(val);
-			UARTprintf("set x to %d\n", x);
 		} else if( strcmp(key, "Y") == 0) {
 			y = convert(val);
 		} else if( strcmp(key, "Color") == 0) {
@@ -207,8 +203,18 @@ private:
 	void onHeaderDone() {
 		UARTprintf("Drawing %d at (%d,%d)\r\n", color, x, y);
 		frameBuffer.putPixel(x, y, color);
-		//frameBuffer.putPixel(1, 1, 0xffff);
-		delete this;
+		if( sendData(MyConnection::okResponse, strlen(MyConnection::okResponse)) == ERR_OK ) {
+			state = SendingData;
+		} else {
+			delete this;
+		}
+	}
+
+	err_t onSent(uint16_t len) {
+		if( state == SendingData) {
+			delete this;
+		}
+		return ERR_OK;
 	}
 
 private:
@@ -218,10 +224,19 @@ private:
 		Pixel
 	} URL;
 
-	URL handlingUrl;
-	Httpd::RequestMethod requestMethod;
-	uint16_t x, y, color;
+	typedef enum {
+		ReceivingData,
+		SendingData,
+	} State;
+
+	URL 			handlingUrl;
+	Httpd::RequestMethod 	requestMethod;
+	State			state;
+	uint16_t 		x, y, color;
+	static const char	okResponse[];
 };
+
+const char MyConnection::okResponse[] = "HTTP/1.1 200 OK\r\n";
 
 class MyWebServer : public Httpd {
 private:

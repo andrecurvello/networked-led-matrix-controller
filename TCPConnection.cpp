@@ -16,8 +16,14 @@ TCPConnection::~TCPConnection() {
 	tcp_recv(pcb, NULL);
 	tcp_err(pcb, NULL);
 	tcp_poll(pcb, NULL, 0);
+	tcp_sent(pcb, NULL);
 
 	tcp_close(pcb);
+}
+
+err_t
+TCPConnection::sendData(const void *dataPtr, uint16_t len, uint8_t apiflags) {
+	return tcp_write(pcb, dataPtr, len, apiflags);
 }
 
 err_t
@@ -25,8 +31,3 @@ TCPConnection::onReceive(struct pbuf *p, err_t err) {
 	return ERR_OK;
 }
 
-err_t
-TCPConnection::onSent(uint16_t len) {
-	UARTprintf("Sent %d bytes\r\n", len);
-	return ERR_OK;
-}
