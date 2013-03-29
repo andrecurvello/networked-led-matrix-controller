@@ -17,7 +17,7 @@ for y in range(0,height):
 		r = pixel[0]
 		g = pixel[1]
 		r = int(r/255.0 * 32)
-		g = int(r/255.0 * 32)
+		g = int(g/255.0 * 32)
 		out.write(chr(r))
 		out.write(chr(g))
 out.close()
