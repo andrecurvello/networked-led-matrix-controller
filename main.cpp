@@ -210,9 +210,12 @@ private:
 			frameBuffer.putPixel(x, y, parameters.putPixel.color);
 		} else if( handlingUrl == PutRect) {
 			parameters.putRect.dataCount = parameters.putRect.width * parameters.putRect.height * 2;
+			parameters.putRect.currentDataCount = 0;
 			UARTprintf("Drawing from (%d,%d) -> (%d, %d)\r\n", x, y, 
 					x + parameters.putRect.width,
 					y + parameters.putRect.height);
+			parameters.putRect.currentX = x;
+			parameters.putRect.currentY = x;
 			UARTprintf("Expecting %d bytes\r\n", parameters.putRect.dataCount);
 		}
 
@@ -239,17 +242,42 @@ private:
 	}
 
 	void onBody(char *data, uint16_t len) {
-		if( len > parameters.putRect.dataCount ) {
-			parameters.putRect.dataCount = 0;
-		} else {
-			parameters.putRect.dataCount -= len;
-		}
-		UARTprintf("dataCount: %d\n", parameters.putRect.dataCount);
-		if( parameters.putRect.dataCount == 0 ) {
-			if( sendData(MyConnection::ResponseOk, strlen(MyConnection::ResponseOk)) == ERR_OK ) {
-				state = SendingData;
-			} else {
-				delete this;
+		if( handlingUrl == PutRect ) {
+			if( len > parameters.putRect.dataCount - parameters.putRect.currentDataCount ) {
+				len = parameters.putRect.dataCount - parameters.putRect.currentDataCount;
+			}
+
+			uint32_t i;
+			for(i = 0; i<len; i++) {
+				uint32_t l = i + parameters.putRect.currentDataCount;
+				//UARTprintf("%d: %d\r\n", l, data[i]);
+				if( l % 2 == 0 ) {
+					parameters.putRect.currentColor = (data[i] & 0xFF);
+				} else if( l % 2 == 1 ) {
+					parameters.putRect.currentColor |= (data[i] & 0xFF) << 8;
+				/*	UARTprintf("put pixel (%d,%d) <- %d\r\n", 
+							parameters.putRect.currentX, 
+							parameters.putRect.currentY,
+							parameters.putRect.currentColor);*/
+					frameBuffer.putPixel(parameters.putRect.currentX, 
+							parameters.putRect.currentY,
+							parameters.putRect.currentColor);
+					parameters.putRect.currentX++;
+					if( parameters.putRect.currentX >= parameters.putRect.width + x) {
+						parameters.putRect.currentX = x;
+						parameters.putRect.currentY++;
+					}
+				}
+			}
+			UARTprintf("i: %d\r\n", i);
+
+			parameters.putRect.currentDataCount += len;
+			if( parameters.putRect.currentDataCount == parameters.putRect.dataCount ) {
+				if( sendData(MyConnection::ResponseOk, strlen(MyConnection::ResponseOk)) == ERR_OK ) {
+					state = SendingData;
+				} else {
+					delete this;
+				}
 			}
 		}
 	}
@@ -279,6 +307,9 @@ private:
 		struct {
 			uint16_t width, height;
 			uint32_t dataCount;
+			uint32_t currentDataCount;
+			uint16_t currentColor;
+			uint16_t currentX, currentY;
 		} putRect;
 	} parameters;
 
