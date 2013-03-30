@@ -171,6 +171,8 @@ private:
 			handlingUrl = PutRect;
 		} else if( strcmp(path, "/Pixel") == 0 ) {
 			handlingUrl = Pixel;
+		} else if( strcmp(path, "/Clear") == 0 ) {
+			handlingUrl = Clear;
 		}
 
 		if( strcmp(method, "GET") == 0) {
@@ -217,6 +219,8 @@ private:
 			parameters.putRect.currentX = x;
 			parameters.putRect.currentY = x;
 			UARTprintf("Expecting %d bytes\r\n", parameters.putRect.dataCount);
+		} else if( handlingUrl == Clear ) {
+			frameBuffer.clear(parameters.putPixel.color);
 		}
 
 		if( handlingUrl != PutRect ) {
@@ -286,7 +290,8 @@ private:
 	typedef enum {
 		None,
 		PutRect,
-		Pixel
+		Pixel,
+		Clear
 	} URL;
 
 	typedef enum {
