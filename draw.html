@@ -1,5 +1,6 @@
 <html>
 	<head>
+		<link rel="stylesheet" href="http://code.jquery.com/ui/1.10.2/themes/smoothness/jquery-ui.css" />
 		<style type="text/css">
 			#drawTable td {
 				background-color: black;
@@ -11,59 +12,192 @@
 			#drawTable {
 				border-spacing: 0;
 			}
+
+			#drawingBoard {
+				width: 480px;
+				height: 480px;
+			}
+
+			#toolbox {
+				vertical-align: top;
+				height: 480px;
+				float: right;
+			}
+
+			#redSlider, #greenSlider {
+				float: left;
+				clear: left;
+				width: 200px;
+				margin: 15px;
+			}
+
+			#currentColor {
+				width: 120px;
+				height: 100px;
+				margin-left: 250px;
+				background-image: none;
+			}
+
+			#redSlider .ui-slider-range { background: #ef2929;}
+			#redSlider .ui-slider-handle { border-color: #ef2929;}
+			#greenSlider .ui-slider-range { background: #29ef29;}
+			#greenSlider .ui-slider-handle { border-color: #29ef29;}
 		</style>
 		<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js">
 		</script>
+		<script src="http://code.jquery.com/ui/1.10.2/jquery-ui.js">
+		</script>
 		<script language="JavaScript">
 			var pressed = false;
-			function generateTable() {
-				for(var y = 0; y<16; y++) {
-					var row = "<tr>"
-					for(var x = 0; x<16; x++) {
-						row = row + "<td id='cell-"+x+"-"+y+"' onMouseDown='changeColor("+x+","+y+");'></td>";
+			var currentColor = new Color(0,0,0);
+
+			function Color(red, green, blue) {
+				this.Red = red;
+				this.Green = green;
+				this.Blue = blue;
+
+				this.HexString = function() {
+					var rStr = this.Red.toString(16);
+					if (rStr.length == 1)
+					rStr = '0' + rStr;
+					var gStr = this.Green.toString(16);
+					if (gStr.length == 1)
+					gStr = '0' + gStr;
+					var bStr = this.Blue.toString(16);
+					if (bStr.length == 1)
+					bStr = '0' + bStr;
+					return ('#' + rStr + gStr + bStr).toUpperCase();
+				};
+
+				this.ByteValue = function() {
+					red = this.Red/255.0 * 32;
+					green = this.Green/255.0 *32;
+					return red | green << 8;
+				};
+			}
+
+			function objToString (obj) {
+				var str = '';
+				for (var p in obj) {
+					if (obj.hasOwnProperty(p)) {
+						str += p + '::' + obj[p] + '\n';
 					}
-					row = row + "</tr>"
-					$("#drawTable").append(row);
 				}
-				$("td").mouseenter(hovering);
+				return str;
+			}
 
-				$("#drawTable").mousedown(function() {
+			var boardElement;
+			var ctx;
+			var cellWidth;
+			var cellHeight;
+			var cellRows = 16;
+			var cellCols = 16;
+			function initBoard() {
+				boardElement = $("#drawingBoard")[0];
+				$("#toolbox").width($("html").width() - boardElement.width - 50);
+				ctx = $("#drawingBoard")[0].getContext("2d");
+				console.log(boardElement.width + "x" + boardElement.height);
+				cellWidth = boardElement.width / cellCols;
+				cellHeight = boardElement.height / cellRows;
+				console.log("CellWidth: " + cellWidth);
+				console.log("CellHeight: " + cellHeight);
+
+				console.log($("#drawingBoard"));
+				$("#drawingBoard").mousemove(function(ev) {
+					if( pressed ) {
+						var x = ev.offsetX;
+						var y = ev.offsetY;
+						fillCellByCoords(x,y, currentColor);
+					}
+				});
+
+				$("#drawingBoard").bind("touchmove", function(ev) {
+					var x = ev.originalEvent.touches[0].clientX;
+					var y = ev.originalEvent.touches[0].clientY;
+					$("#log").html("Event: " +objToString(ev.originalEvent.touches[0]));
+					fillCellByCoords(x,y, currentColor);
+					return false;
+				});
+
+				$("#drawingBoard").mousedown(function(ev) {
+					var x = ev.offsetX;
+					var y = ev.offsetY;
+					fillCellByCoords(x,y, currentColor);
 					pressed = true;
-					//$("#drawTable").bind('mouseover', hovering);
 					return false;
 				});
-				$("#drawTable").mouseup(function() {
-					pressed = false
-					//$("#drawTable").unbind('mouseover');
+
+				$("#drawingBoard").mouseup(function(ev) {
+					pressed = false;
 					return false;
 				});
+
+				$("#redSlider, #greenSlider").slider(
+				{
+					orientation: "horizontal",
+					range: "min",
+					max: 255,
+					slide: refreshColor,
+					change: refreshColor
+				});
+
+				clearMatrix();
+				refreshColor();
 			}
 
-			function color(red, green) {
-				return red | green << 8;
+			function refreshColor() {
+				var red = $("#redSlider").slider("value");
+				var green = $("#greenSlider").slider("value");
+				currentColor = new Color(red, green, 0);
+				$("#currentColor").css("background-color", currentColor.HexString());
 			}
 
-			function changeColor(x, y) {
-				$("#cell-" + x + "-" + y).css('background-color', 'red');
+			function fillCellByCoords(x, y, color) {
+				var cellX = Math.floor(x / cellWidth);
+				var cellY = Math.floor(y / cellHeight);
+				fillCell(cellX, cellY, color);
+			}
+
+			function fillCell(x, y, color) {
+				var pixX = x*cellWidth;
+				var pixY = y*cellHeight;
+
+				ctx.fillStyle=color.HexString();
+				ctx.fillRect(pixX, pixY, cellWidth, cellHeight);
+
 				$.ajax( {
 						url: 'http://10.0.0.238/Pixel', 
 						headers: {
 							'X': x,
 							'Y': y,
-							'Color': color(0, 32)
+							'Color': color.ByteValue()
 						}
 					});
 			}
 
-			function hovering(ev) {
-				if( pressed ) {
-					ev.target.onmousedown();
-				}
+			function clearMatrix() {
+				var color = new Color(0, 0, 0);
+				ctx.fillStyle = color.HexString();
+				ctx.fillRect(0, 0, boardElement.width, boardElement.height); 
+				$.ajax( {
+						url: 'http://10.0.0.238/Clear', 
+						headers: {
+							'Color': color.ByteValue()
+						}
+					});
 			}
 		</script>
 	</head>
-	<body onLoad="generateTable();">
-		<table id="drawTable">
-		</table>
+	<body onLoad="initBoard()">
+		<canvas id="drawingBoard" width="480" height="480">
+		</canvas>
+		<div id="toolbox">
+			<button type="button" onclick="clearMatrix();">Clear</button>
+			<br />
+			<div id="redSlider"></div>
+			<div id="greenSlider"></div>
+			<div id="currentColor" class="ui-widget-content ui-corner-all"></div>
+		</div>
+		<div id="log"></div>
 	</body>
 </html>
