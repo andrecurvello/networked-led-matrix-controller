@@ -4,8 +4,12 @@
 			#drawTable td {
 				background-color: black;
 				padding: 0 0 0 0;
-				width: 10px;
-				height: 10px;
+				margin: 0 0 0 0;
+				width: 30px;
+				height: 30px;
+			}
+			#drawTable {
+				border-spacing: 0;
 			}
 		</style>
 		<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js">
@@ -22,14 +26,21 @@
 					$("#drawTable").append(row);
 				}
 				$("td").mouseenter(hovering);
+
 				$("#drawTable").mousedown(function() {
 					pressed = true;
 					//$("#drawTable").bind('mouseover', hovering);
+					return false;
 				});
 				$("#drawTable").mouseup(function() {
 					pressed = false
 					//$("#drawTable").unbind('mouseover');
+					return false;
 				});
+			}
+
+			function color(red, green) {
+				return red | green << 8;
 			}
 
 			function changeColor(x, y) {
@@ -39,7 +50,7 @@
 						headers: {
 							'X': x,
 							'Y': y,
-							'Color': 65535
+							'Color': color(0, 32)
 						}
 					});
 			}
