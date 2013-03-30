@@ -317,7 +317,12 @@ private:
 	static const char	ResponseNotFound[];
 };
 
-const char MyConnection::ResponseOk[] = "HTTP/1.1 200 OK\r\n";
+const char MyConnection::ResponseOk[] = 
+	"HTTP/1.1 200 OK\r\n"
+	"Server: test\r\n"
+	"Access-Control-Allow-Origin: *\r\n"
+	"Access-Control-Allow-Headers: X,Y,Width,Height,Color\r\n";
+
 const char MyConnection::ResponseNotFound[] = "HTTP/1.1 404 Not Found\r\n";
 
 class MyWebServer : public Httpd {
