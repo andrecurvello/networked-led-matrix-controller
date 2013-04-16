@@ -66,7 +66,7 @@ CFLAGS+= -Imcu++-lib/include
 CXXFLAGS = $(CFLAGS) -fno-rtti -fno-exceptions
 
 # Flags for LD
-LFLAGS  = --gc-sections
+LFLAGS  = -Wl,--gc-sections
 
 # Flags for objcopy
 CPFLAGS = -Obinary
