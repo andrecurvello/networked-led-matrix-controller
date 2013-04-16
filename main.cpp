@@ -39,12 +39,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "enc28j60.h"
 #include "jenkins-api-client.h"
 //#include "led_matrix_config.h"
 #ifdef __cplusplus
 }
 #endif
+
+#include "enc28j60_stellaris.h"
 
 #define delayMs(ms) (SysCtlDelay(((SysCtlClockGet() / 3) / 1000)*ms))
 
@@ -61,7 +62,6 @@ void timer0_int_handler(void);
 }
 #endif
 
-static void enc28j60_comm_init(void);
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -338,6 +338,7 @@ private:
 };
 
 MyWebServer			httpd;
+ENCJ_STELLARIS::ENC28J60	if_en;
 
 int
 main(void) {
@@ -382,10 +383,6 @@ main(void) {
 	MAP_TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT | TIMER_TIMB_TIMEOUT);
 	MAP_TimerEnable(TIMER0_BASE, TIMER_BOTH);
 
-	MAP_GPIOIntTypeSet(GPIO_PORTE_BASE, ENC_INT, GPIO_FALLING_EDGE);
-	MAP_GPIOPinIntClear(GPIO_PORTE_BASE, ENC_INT);
-	MAP_GPIOPinIntEnable(GPIO_PORTE_BASE, ENC_INT);
-
 	MAP_IntMasterEnable();
 
 	FAST_GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0);
@@ -406,8 +403,7 @@ main(void) {
 	//matrix.setAnimation(&testAnimation, 3);
 	//frameBuffer.putPixel(3,3, redColor);
 	
-	enc28j60_comm_init();
-	enc_init(mac_addr);
+	if_en.Init(mac_addr, &netif);
 
 	lwip_init();
 
@@ -417,7 +413,7 @@ main(void) {
 	IP4_ADDR(&ipaddr, 0,0,0,0);
 	IP4_ADDR(&netmask, 0, 0, 0, 0);
 
-	netif_add(&netif, &ipaddr, &netmask, &gw, NULL, enc28j60_init, ethernet_input);
+	netif_add(&netif, &ipaddr, &netmask, &gw, &if_en, StellarisENC28J60::lwip_init, ethernet_input);
 	netif_set_default(&netif);
 	dhcp_start(&netif);
 
@@ -473,7 +469,7 @@ main(void) {
 		
 		if( HWREGBITW(&events, FLAG_ENC_INT) == 1 ) {
 			HWREGBITW(&events, FLAG_ENC_INT) = 0;
-			enc_action(&netif);
+			if_en.Interrupt();
 		}
 #endif
 	}
@@ -551,26 +547,6 @@ void SysTickIntHandler(void) {
 #ifdef __cplusplus
 }
 #endif
-
-static void
-enc28j60_comm_init(void) {
-	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
-	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
-	MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
-	MAP_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, ENC_CS);
-	//MAP_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, SRAM_CS);
-	//  MAP_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, ENC_CS | ENC_RESET | SRAM_CS);
-	MAP_GPIOPinTypeGPIOInput(GPIO_PORTE_BASE, ENC_INT);
-
-	//  MAP_GPIOPinWrite(GPIO_PORTA_BASE, ENC_RESET, 0);
-	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
-	//MAP_GPIOPinWrite(GPIO_PORTA_BASE, SRAM_CS, SRAM_CS);
-	MAP_IntEnable(INT_GPIOE);
-
-	MAP_GPIOIntTypeSet(GPIO_PORTE_BASE, ENC_INT, GPIO_FALLING_EDGE);
-	MAP_GPIOPinIntClear(GPIO_PORTE_BASE, ENC_INT);
-	MAP_GPIOPinIntEnable(GPIO_PORTE_BASE, ENC_INT);
-}
 
 #ifdef __cplusplus
 extern "C" {
