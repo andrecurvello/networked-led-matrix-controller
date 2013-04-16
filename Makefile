@@ -66,7 +66,7 @@ CFLAGS+= -Imcu++-lib/include
 CXXFLAGS = $(CFLAGS) -fno-rtti -fno-exceptions
 
 # Flags for LD
-LFLAGS  = --gc-sections
+LFLAGS  = -Wl,--gc-sections
 
 # Flags for objcopy
 CPFLAGS = -Obinary
@@ -124,9 +124,10 @@ SRC_LWIP=$(DIR_LWIP)/core/raw.c \
         $(DIR_LWIP)/netif/etharp.c 
 
 SRC = LM4F_startup.c \
-      main.c \
+      main.cpp \
       dummyfuncs.c \
-      enc28j60.c \
+      enc28j60.cpp \
+      enc28j60_stellaris.cpp \
       httpd.cpp \
       TCPConnection.cpp \
       jenkins-api-client.c \
